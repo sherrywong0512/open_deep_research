@@ -28,7 +28,9 @@ def build_evidence_package_from_research_output(
     """Build evidence only from mappings grounded in the supplied research sources."""
     _validate_access_date(accessed_at)
     research_sources = extract_research_sources(research_output, accessed_at)
-    sources_by_url = {item["source_url"]: item for item in research_sources}
+    sources_by_url: dict[str, list[dict[str, str]]] = {}
+    for source in research_sources:
+        sources_by_url.setdefault(source["source_url"], []).append(source)
     raw_mappings = json.loads(mappings_json)
     if not isinstance(raw_mappings, list):
         raise ValueError("mappings_json must contain a JSON array")
@@ -48,8 +50,8 @@ def build_evidence_package_from_research_output(
             )
             continue
 
-        source = sources_by_url.get(source_url)
-        if source is None:
+        source_observations = sources_by_url.get(source_url)
+        if source_observations is None:
             rejected_mappings.append(
                 {
                     "claim_id": mapping.get("claim_id"),
@@ -60,9 +62,11 @@ def build_evidence_package_from_research_output(
             continue
 
         key_excerpt = mapping.get("key_excerpt")
-        if not isinstance(key_excerpt, str) or _normalise_text(
-            key_excerpt
-        ) not in _normalise_text(source["research_excerpt"]):
+        if not isinstance(key_excerpt, str) or not any(
+            _normalise_text(key_excerpt)
+            in _normalise_text(source["research_excerpt"])
+            for source in source_observations
+        ):
             rejected_mappings.append(
                 {
                     "claim_id": mapping.get("claim_id"),

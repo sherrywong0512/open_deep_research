@@ -169,3 +169,45 @@ This source must not appear in a package.
 """
 
     assert extract_research_sources(research_output, "2026-07-17") == []
+
+
+def test_accepts_an_excerpt_from_any_observation_of_the_same_url() -> None:
+    research_output = """--- SOURCE 1: Earlier observation ---
+URL: https://regulator.example/licenses/ABC-123
+
+SUMMARY:
+Earlier observation contains licence excerpt ABC-123.
+
+--------------------------------------------------------------------------------
+
+--- SOURCE 2: Later observation ---
+URL: https://regulator.example/licenses/ABC-123
+
+SUMMARY:
+Later observation contains different context.
+
+--------------------------------------------------------------------------------
+"""
+    mappings_json = json.dumps(
+        [
+            {
+                "claim_id": "license",
+                "fact": "监管登记页列示公司持有许可。",
+                "key_excerpt": "licence excerpt ABC-123",
+                "source_url": "https://regulator.example/licenses/ABC-123",
+                "published_at": "2026-01-10",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "仅核验许可存在。",
+            }
+        ]
+    )
+
+    package = json.loads(
+        build_evidence_package_from_research_output(
+            _request_json(), research_output, mappings_json, "2026-07-17"
+        )
+    )
+
+    assert package["coverage"][0]["status"] == "covered"

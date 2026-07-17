@@ -5,7 +5,10 @@ import re
 from datetime import date
 from typing import Any
 
-from open_deep_research.diligence_evidence import build_evidence_package
+from open_deep_research.diligence_evidence import (
+    build_evidence_package,
+    validate_source_url,
+)
 
 _SOURCE_PATTERN = re.compile(
     r"--- SOURCE \d+: (?P<title>[^\n]+) ---\s*\n"
@@ -86,16 +89,23 @@ def build_evidence_package_from_research_output(
 def extract_research_sources(research_output: str, accessed_at: str) -> list[dict[str, str]]:
     """Extract source observations from the built-in Tavily search-output format."""
     _validate_access_date(accessed_at)
-    return [
-        {
-            "title": match.group("title").strip(),
-            "source_url": match.group("url").strip(),
-            "research_excerpt": match.group("summary").strip(),
-            "accessed_at": accessed_at,
-            "limitations": "Research output is a source observation, not verified evidence.",
-        }
-        for match in _SOURCE_PATTERN.finditer(research_output)
-    ]
+    sources: list[dict[str, str]] = []
+    for match in _SOURCE_PATTERN.finditer(research_output):
+        source_url = match.group("url").strip()
+        try:
+            validate_source_url(source_url)
+        except ValueError:
+            continue
+        sources.append(
+            {
+                "title": match.group("title").strip(),
+                "source_url": source_url,
+                "research_excerpt": match.group("summary").strip(),
+                "accessed_at": accessed_at,
+                "limitations": "Research output is a source observation, not verified evidence.",
+            }
+        )
+    return sources
 
 
 def _validate_access_date(accessed_at: str) -> None:

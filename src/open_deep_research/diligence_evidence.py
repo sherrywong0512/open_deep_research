@@ -43,12 +43,7 @@ class EvidenceCandidate(BaseModel):
     @classmethod
     def require_http_url(cls, value: Any) -> Any:
         """Validate an HTTP(S) URL while retaining its original representation."""
-        if not isinstance(value, str) or any(char.isspace() for char in value):
-            raise ValueError("must be an HTTP(S) URL")
-        parsed = urlsplit(value)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("must be an HTTP(S) URL")
-        return value
+        return validate_source_url(value)
 
     @field_validator("published_at", "accessed_at", mode="before")
     @classmethod
@@ -158,6 +153,25 @@ def _missing_fields(candidate: dict[str, Any]) -> list[str]:
         or candidate[field] is None
         or (isinstance(candidate[field], str) and not candidate[field].strip())
     ]
+
+
+def validate_source_url(value: Any) -> str:
+    """Validate a credential-free HTTP(S) URL without rewriting its representation."""
+    if not isinstance(value, str) or any(char.isspace() for char in value):
+        raise ValueError("must be a credential-free HTTP(S) URL")
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise ValueError("must be a credential-free HTTP(S) URL")
+    try:
+        parsed.port
+    except ValueError as error:
+        raise ValueError("must have a valid URL port") from error
+    return value
 
 
 def _coverage_for(

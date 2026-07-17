@@ -4,6 +4,7 @@ import json
 
 from open_deep_research.diligence_research_adapter import (
     build_evidence_package_from_research_output,
+    extract_research_sources,
 )
 
 
@@ -155,3 +156,16 @@ Registry entry says root-source excerpt.
 
     assert package["usable_evidence"][0]["source_url"] == "https://regulator.example"
     assert package["research_sources"][0]["source_url"] == "https://regulator.example"
+
+
+def test_omits_research_sources_with_embedded_credentials() -> None:
+    research_output = """--- SOURCE 1: Unsafe source ---
+URL: https://user:secret@regulator.example/licenses/ABC-123
+
+SUMMARY:
+This source must not appear in a package.
+
+--------------------------------------------------------------------------------
+"""
+
+    assert extract_research_sources(research_output, "2026-07-17") == []

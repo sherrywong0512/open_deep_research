@@ -219,3 +219,59 @@ def test_rejects_candidate_with_a_datetime_instead_of_an_iso_date() -> None:
     assert package["usable_evidence"] == []
     assert package["rejected_evidence"][0]["reason"] == "invalid_candidate"
     assert package["coverage"][0]["status"] == "needs_verification"
+
+
+def test_rejects_source_urls_without_a_host_with_credentials_or_invalid_ports() -> None:
+    request_json = json.dumps(
+        {
+            "subject": "Example Company",
+            "purpose": "会前公开信息核验",
+            "claims": [{"id": "claim-1", "statement": "公司持有某项许可"}],
+        }
+    )
+    candidates_json = json.dumps(
+        [
+            {
+                "claim_id": "claim-1",
+                "fact": "公司持有某项许可。",
+                "key_excerpt": "许可证编号：ABC-123",
+                "source_url": "https://user@",
+                "published_at": "2026-01-10",
+                "accessed_at": "2026-07-17",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "无效来源。",
+            },
+            {
+                "claim_id": "claim-1",
+                "fact": "公司持有某项许可。",
+                "key_excerpt": "许可证编号：ABC-123",
+                "source_url": "https://user:secret@regulator.example/licenses/ABC-123",
+                "published_at": "2026-01-10",
+                "accessed_at": "2026-07-17",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "来源包含凭据。",
+            },
+            {
+                "claim_id": "claim-1",
+                "fact": "公司持有某项许可。",
+                "key_excerpt": "许可证编号：ABC-123",
+                "source_url": "https://regulator.example:invalid/licenses/ABC-123",
+                "published_at": "2026-01-10",
+                "accessed_at": "2026-07-17",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "端口无效。",
+            },
+        ]
+    )
+
+    package = json.loads(build_evidence_package(request_json, candidates_json))
+
+    assert package["usable_evidence"] == []
+    assert len(package["rejected_evidence"]) == 3
+    assert package["coverage"][0]["status"] == "needs_verification"

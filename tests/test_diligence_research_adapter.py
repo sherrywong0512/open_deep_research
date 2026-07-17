@@ -120,3 +120,38 @@ def test_rejects_mapping_with_an_excerpt_missing_from_the_observed_source() -> N
     assert package["usable_evidence"] == []
     assert package["rejected_evidence"][0]["reason"] == "excerpt_not_observed"
     assert package["coverage"][0]["status"] == "needs_verification"
+
+
+def test_preserves_the_exact_observed_root_url_in_usable_evidence() -> None:
+    research_output = """--- SOURCE 1: Root registry ---
+URL: https://regulator.example
+
+SUMMARY:
+Registry entry says root-source excerpt.
+
+--------------------------------------------------------------------------------
+"""
+    mappings_json = json.dumps(
+        [
+            {
+                "claim_id": "license",
+                "fact": "监管登记页列示公司持有许可。",
+                "key_excerpt": "root-source excerpt",
+                "source_url": "https://regulator.example",
+                "published_at": "2026-01-10",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "仅核验许可存在。",
+            }
+        ]
+    )
+
+    package = json.loads(
+        build_evidence_package_from_research_output(
+            _request_json(), research_output, mappings_json, "2026-07-17"
+        )
+    )
+
+    assert package["usable_evidence"][0]["source_url"] == "https://regulator.example"
+    assert package["research_sources"][0]["source_url"] == "https://regulator.example"

@@ -4,8 +4,9 @@ import json
 import re
 from datetime import date
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, HttpUrl, ValidationError, field_validator
+from pydantic import BaseModel, ValidationError, field_validator
 
 
 class DiligenceClaim(BaseModel):
@@ -30,13 +31,24 @@ class EvidenceCandidate(BaseModel):
     claim_id: str
     fact: str
     key_excerpt: str
-    source_url: HttpUrl
+    source_url: str
     published_at: date
     accessed_at: date
     source_type: str
     evidence_level: Literal["A", "B", "C", "U"]
     is_independent: bool
     limitations: str
+
+    @field_validator("source_url", mode="before")
+    @classmethod
+    def require_http_url(cls, value: Any) -> Any:
+        """Validate an HTTP(S) URL while retaining its original representation."""
+        if not isinstance(value, str) or any(char.isspace() for char in value):
+            raise ValueError("must be an HTTP(S) URL")
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("must be an HTTP(S) URL")
+        return value
 
     @field_validator("published_at", "accessed_at", mode="before")
     @classmethod

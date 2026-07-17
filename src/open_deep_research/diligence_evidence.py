@@ -132,7 +132,9 @@ def _missing_fields(candidate: dict[str, Any]) -> list[str]:
     return [
         field
         for field in _REQUIRED_CANDIDATE_FIELDS
-        if field not in candidate or candidate[field] in (None, "")
+        if field not in candidate
+        or candidate[field] is None
+        or (isinstance(candidate[field], str) and not candidate[field].strip())
     ]
 
 

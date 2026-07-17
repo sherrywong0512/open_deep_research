@@ -111,3 +111,41 @@ def test_rejects_candidate_with_an_empty_source_url() -> None:
     assert package["usable_evidence"] == []
     assert package["rejected_evidence"][0]["missing_fields"] == ["source_url"]
     assert package["coverage"][0]["status"] == "needs_verification"
+
+
+def test_rejects_candidate_with_a_whitespace_only_source_url() -> None:
+    request_json = json.dumps(
+        {
+            "subject": "Example Company",
+            "purpose": "会前公开信息核验",
+            "claims": [
+                {
+                    "id": "claim-1",
+                    "statement": "公司持有某项许可",
+                    "priority": "high",
+                }
+            ],
+        }
+    )
+    candidates_json = json.dumps(
+        [
+            {
+                "claim_id": "claim-1",
+                "fact": "公司持有某项许可。",
+                "key_excerpt": "许可证编号：ABC-123",
+                "source_url": "   ",
+                "published_at": "2026-01-10",
+                "accessed_at": "2026-07-17",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "来源链接为空白，无法复核。",
+            }
+        ]
+    )
+
+    package = json.loads(build_evidence_package(request_json, candidates_json))
+
+    assert package["usable_evidence"] == []
+    assert package["rejected_evidence"][0]["missing_fields"] == ["source_url"]
+    assert package["coverage"][0]["status"] == "needs_verification"

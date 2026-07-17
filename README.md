@@ -16,6 +16,18 @@ Run the focused test:
 uv run pytest tests/test_diligence_evidence.py -q
 ```
 
+Run the reproducible local suite:
+
+```bash
+uv run pytest -q
+```
+
+The legacy LangSmith evaluation needs configured remote model, search, and LangSmith access, so it is opt-in:
+
+```bash
+uv run pytest --run-langsmith src/legacy/tests/test_report_quality.py
+```
+
 See the synthetic input examples in [`examples/due_diligence_request.json`](examples/due_diligence_request.json) and [`examples/due_diligence_candidates.json`](examples/due_diligence_candidates.json).
 
 <img width="817" height="666" alt="Screenshot 2025-07-13 at 11 21 12 PM" src="https://github.com/user-attachments/assets/052f2ed3-c664-4a4f-8ec2-074349dcaa3f" />

@@ -149,3 +149,73 @@ def test_rejects_candidate_with_a_whitespace_only_source_url() -> None:
     assert package["usable_evidence"] == []
     assert package["rejected_evidence"][0]["missing_fields"] == ["source_url"]
     assert package["coverage"][0]["status"] == "needs_verification"
+
+
+def test_rejects_candidate_with_an_invalid_source_url_or_date() -> None:
+    request_json = json.dumps(
+        {
+            "subject": "Example Company",
+            "purpose": "会前公开信息核验",
+            "claims": [
+                {
+                    "id": "claim-1",
+                    "statement": "公司持有某项许可",
+                    "priority": "high",
+                }
+            ],
+        }
+    )
+    candidates_json = json.dumps(
+        [
+            {
+                "claim_id": "claim-1",
+                "fact": "公司持有某项许可。",
+                "key_excerpt": "许可证编号：ABC-123",
+                "source_url": "not-a-url",
+                "published_at": "unknown",
+                "accessed_at": "2026-07-17",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "来源链接和发布日期均不可复核。",
+            }
+        ]
+    )
+
+    package = json.loads(build_evidence_package(request_json, candidates_json))
+
+    assert package["usable_evidence"] == []
+    assert package["rejected_evidence"][0]["reason"] == "invalid_candidate"
+    assert package["coverage"][0]["status"] == "needs_verification"
+
+
+def test_rejects_candidate_with_a_datetime_instead_of_an_iso_date() -> None:
+    request_json = json.dumps(
+        {
+            "subject": "Example Company",
+            "purpose": "会前公开信息核验",
+            "claims": [{"id": "claim-1", "statement": "公司持有某项许可"}],
+        }
+    )
+    candidates_json = json.dumps(
+        [
+            {
+                "claim_id": "claim-1",
+                "fact": "公司持有某项许可。",
+                "key_excerpt": "许可证编号：ABC-123",
+                "source_url": "https://regulator.example/licenses/ABC-123",
+                "published_at": "2026-01-10T00:00:00Z",
+                "accessed_at": "2026-07-17",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "发布日期含时间，不能按日期契约无声截断。",
+            }
+        ]
+    )
+
+    package = json.loads(build_evidence_package(request_json, candidates_json))
+
+    assert package["usable_evidence"] == []
+    assert package["rejected_evidence"][0]["reason"] == "invalid_candidate"
+    assert package["coverage"][0]["status"] == "needs_verification"

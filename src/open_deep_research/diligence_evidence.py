@@ -1,9 +1,11 @@
 """Build traceable evidence packages for public-information diligence."""
 
 import json
+import re
+from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, HttpUrl, ValidationError, field_validator
 
 
 class DiligenceClaim(BaseModel):
@@ -28,13 +30,21 @@ class EvidenceCandidate(BaseModel):
     claim_id: str
     fact: str
     key_excerpt: str
-    source_url: str
-    published_at: str
-    accessed_at: str
+    source_url: HttpUrl
+    published_at: date
+    accessed_at: date
     source_type: str
     evidence_level: Literal["A", "B", "C", "U"]
     is_independent: bool
     limitations: str
+
+    @field_validator("published_at", "accessed_at", mode="before")
+    @classmethod
+    def require_iso_date(cls, value: Any) -> Any:
+        """Accept only complete ISO calendar dates without a time component."""
+        if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            raise ValueError("must use the YYYY-MM-DD ISO date format")
+        return value
 
 
 _REQUIRED_CANDIDATE_FIELDS = (

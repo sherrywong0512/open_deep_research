@@ -1,4 +1,4 @@
-"""Load shared pytest behavior when this directory is the test root."""
+"""Load shared pytest behavior from the legacy test package."""
 
 from legacy.tests.pytest_plugin import pytest_addoption as _pytest_addoption
 from legacy.tests.pytest_plugin import (

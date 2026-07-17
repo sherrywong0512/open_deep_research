@@ -67,6 +67,16 @@ def build_evidence_package(request_json: str, candidates_json: str) -> str:
         claim_id = candidate_data.get("claim_id")
         missing_fields = _missing_fields(candidate_data)
 
+        if missing_fields:
+            rejected_evidence.append(
+                {
+                    "claim_id": claim_id,
+                    "missing_fields": missing_fields,
+                    "reason": "missing_required_fields",
+                }
+            )
+            continue
+
         try:
             candidate = EvidenceCandidate.model_validate(candidate_data)
         except ValidationError:

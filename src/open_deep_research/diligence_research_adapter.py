@@ -4,7 +4,6 @@ import json
 import re
 from datetime import date
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 from open_deep_research.diligence_evidence import build_evidence_package
 
@@ -26,7 +25,7 @@ def build_evidence_package_from_research_output(
     """Build evidence only from mappings grounded in the supplied research sources."""
     _validate_access_date(accessed_at)
     research_sources = extract_research_sources(research_output, accessed_at)
-    observed_urls = {_normalise_url(item["source_url"]) for item in research_sources}
+    sources_by_url = {item["source_url"]: item for item in research_sources}
     raw_mappings = json.loads(mappings_json)
     if not isinstance(raw_mappings, list):
         raise ValueError("mappings_json must contain a JSON array")
@@ -36,12 +35,36 @@ def build_evidence_package_from_research_output(
     for raw_mapping in raw_mappings:
         mapping = raw_mapping if isinstance(raw_mapping, dict) else {}
         source_url = mapping.get("source_url")
-        if not isinstance(source_url, str) or _normalise_url(source_url) not in observed_urls:
+        if not isinstance(source_url, str):
             rejected_mappings.append(
                 {
                     "claim_id": mapping.get("claim_id"),
                     "missing_fields": [],
                     "reason": "source_not_observed",
+                }
+            )
+            continue
+
+        source = sources_by_url.get(source_url)
+        if source is None:
+            rejected_mappings.append(
+                {
+                    "claim_id": mapping.get("claim_id"),
+                    "missing_fields": [],
+                    "reason": "source_not_observed",
+                }
+            )
+            continue
+
+        key_excerpt = mapping.get("key_excerpt")
+        if not isinstance(key_excerpt, str) or _normalise_text(
+            key_excerpt
+        ) not in _normalise_text(source["research_excerpt"]):
+            rejected_mappings.append(
+                {
+                    "claim_id": mapping.get("claim_id"),
+                    "missing_fields": [],
+                    "reason": "excerpt_not_observed",
                 }
             )
             continue
@@ -82,8 +105,6 @@ def _validate_access_date(accessed_at: str) -> None:
     date.fromisoformat(accessed_at)
 
 
-def _normalise_url(url: str) -> str:
-    """Normalise HTTP URLs so equivalent trailing slashes compare consistently."""
-    parsed = urlsplit(url)
-    path = parsed.path.rstrip("/") or "/"
-    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), path, parsed.query, ""))
+def _normalise_text(text: str) -> str:
+    """Fold case and whitespace before comparing an excerpt to its source observation."""
+    return " ".join(text.casefold().split())

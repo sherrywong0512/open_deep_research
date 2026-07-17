@@ -32,7 +32,7 @@ See the synthetic input examples in [`examples/due_diligence_request.json`](exam
 
 ### Run a grounded research-output conversion
 
-The current research tool emits `SOURCE / URL / SUMMARY` text. Convert it only with a mapping whose `source_url` appears in that text; the runner supplies the access date and rejects mappings to unseen URLs.
+The current research tool emits `SOURCE / URL / SUMMARY` text. Convert it only with a mapping whose `source_url` exactly appears in that text and whose `key_excerpt` occurs in the same source observation; the runner supplies the access date and rejects unmapped sources or excerpts.
 
 ```bash
 uv run python -m open_deep_research.diligence_runner \

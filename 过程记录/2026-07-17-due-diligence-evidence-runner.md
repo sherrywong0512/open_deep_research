@@ -18,6 +18,7 @@
 - 在 README 中声明 Fork 的边界与运行方式。
 - 将依赖远程模型、搜索和 LangSmith 的 legacy 集成测试改为 `--run-langsmith` 显式启用；默认全量测试只执行本地可复现检查。
 - 将测试配置抽为共享 pytest 插件，确保从仓库根目录或 `src/legacy/tests` 目录运行时均保留相同的选项与 opt-in 行为。
+- 新增研究输出适配器与 CLI：仅允许将原研究输出中实际出现的 URL 映射为候选证据，并保留来源观察与访问日期。
 
 ## 验证
 
@@ -27,6 +28,7 @@
 - 运行 `uv run ruff check src/open_deep_research/diligence_evidence.py tests/test_diligence_evidence.py`。
 - 运行 `uv run pytest -q`，确认本地测试通过、外部集成测试明确跳过。
 - 分别从仓库根目录和 `src/legacy/tests` 运行 pytest，确认共享插件均被加载。
+- 使用合成请求、研究输出和映射清单端到端运行 CLI，检查生成的证据包与覆盖状态。
 
 ## 后续
 

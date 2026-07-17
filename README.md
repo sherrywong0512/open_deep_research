@@ -30,6 +30,21 @@ uv run pytest --run-langsmith src/legacy/tests/test_report_quality.py
 
 See the synthetic input examples in [`examples/due_diligence_request.json`](examples/due_diligence_request.json) and [`examples/due_diligence_candidates.json`](examples/due_diligence_candidates.json).
 
+### Run a grounded research-output conversion
+
+The current research tool emits `SOURCE / URL / SUMMARY` text. Convert it only with a mapping whose `source_url` appears in that text; the runner supplies the access date and rejects mappings to unseen URLs.
+
+```bash
+uv run python -m open_deep_research.diligence_runner \
+  --request examples/due_diligence_request.json \
+  --research-output examples/due_diligence_research_output.txt \
+  --mappings examples/due_diligence_mappings.json \
+  --accessed-at 2026-07-17 \
+  --output /tmp/due_diligence_package.json
+```
+
+Research summaries are source observations, not facts. A mapping still needs a claim, factual excerpt, publication date, source type, evidence level, independence flag, and limitations before the existing evidence gate can mark it usable.
+
 <img width="817" height="666" alt="Screenshot 2025-07-13 at 11 21 12 PM" src="https://github.com/user-attachments/assets/052f2ed3-c664-4a4f-8ec2-074349dcaa3f" />
 
 ### 🔥 Recent Updates

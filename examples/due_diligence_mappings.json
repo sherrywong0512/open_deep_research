@@ -1,0 +1,13 @@
+[
+  {
+    "claim_id": "licence-exists",
+    "fact": "监管页面列示该公司持有许可。",
+    "key_excerpt": "许可证编号：ABC-123",
+    "source_url": "https://regulator.example/licenses/ABC-123",
+    "published_at": "2026-01-10",
+    "source_type": "regulatory_record",
+    "evidence_level": "A",
+    "is_independent": true,
+    "limitations": "示例数据仅展示结构，不代表真实许可。"
+  }
+]

@@ -1,0 +1,94 @@
+"""Behavioral tests for converting research-tool output into evidence packages."""
+
+import json
+
+from open_deep_research.diligence_research_adapter import (
+    build_evidence_package_from_research_output,
+)
+
+
+def _request_json() -> str:
+    return json.dumps(
+        {
+            "subject": "Example Company",
+            "purpose": "会前公开信息核验",
+            "claims": [
+                {
+                    "id": "license",
+                    "statement": "公司持有某项许可",
+                    "priority": "high",
+                }
+            ],
+        }
+    )
+
+
+def _research_output() -> str:
+    return """Search results:
+
+--- SOURCE 1: License registry ---
+URL: https://regulator.example/licenses/ABC-123
+
+SUMMARY:
+Registry lists license ABC-123 for Example Company.
+
+--------------------------------------------------------------------------------
+"""
+
+
+def test_builds_evidence_only_when_mapping_points_to_observed_source() -> None:
+    mappings_json = json.dumps(
+        [
+            {
+                "claim_id": "license",
+                "fact": "监管登记页列示 Example Company 持有许可。",
+                "key_excerpt": "license ABC-123 for Example Company",
+                "source_url": "https://regulator.example/licenses/ABC-123",
+                "published_at": "2026-01-10",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "仅核验许可存在。",
+            }
+        ]
+    )
+
+    package = json.loads(
+        build_evidence_package_from_research_output(
+            _request_json(), _research_output(), mappings_json, "2026-07-17"
+        )
+    )
+
+    assert package["usable_evidence"][0]["accessed_at"] == "2026-07-17"
+    assert package["coverage"][0]["status"] == "covered"
+    assert package["research_sources"][0]["source_url"] == (
+        "https://regulator.example/licenses/ABC-123"
+    )
+
+
+def test_rejects_mapping_that_does_not_point_to_an_observed_source() -> None:
+    mappings_json = json.dumps(
+        [
+            {
+                "claim_id": "license",
+                "fact": "公司持有许可。",
+                "key_excerpt": "许可证编号：ABC-123",
+                "source_url": "https://unobserved.example/claim",
+                "published_at": "2026-01-10",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "该链接不在研究输出中。",
+            }
+        ]
+    )
+
+    package = json.loads(
+        build_evidence_package_from_research_output(
+            _request_json(), _research_output(), mappings_json, "2026-07-17"
+        )
+    )
+
+    assert package["usable_evidence"] == []
+    assert package["rejected_evidence"][0]["reason"] == "source_not_observed"
+    assert package["coverage"][0]["status"] == "needs_verification"

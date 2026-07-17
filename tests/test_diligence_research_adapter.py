@@ -4,6 +4,7 @@ import json
 
 from open_deep_research.diligence_research_adapter import (
     build_evidence_package_from_research_output,
+    build_evidence_package_from_research_record,
     extract_research_sources,
 )
 
@@ -211,3 +212,67 @@ Later observation contains different context.
     )
 
     assert package["coverage"][0]["status"] == "covered"
+
+
+def test_builds_evidence_from_a_platform_neutral_agent_research_record() -> None:
+    research_record_json = json.dumps(
+        {
+            "agent": {"name": "Codex", "mode": "interactive"},
+            "sources": [
+                {
+                    "title": "License registry",
+                    "source_url": "https://regulator.example/licenses/ABC-123",
+                    "research_excerpt": (
+                        "Registry lists license ABC-123 for Example Company."
+                    ),
+                }
+            ],
+        }
+    )
+    mappings_json = json.dumps(
+        [
+            {
+                "claim_id": "license",
+                "fact": "监管登记页列示 Example Company 持有许可。",
+                "key_excerpt": "license ABC-123 for Example Company",
+                "source_url": "https://regulator.example/licenses/ABC-123",
+                "published_at": "2026-01-10",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "仅核验许可存在。",
+            }
+        ]
+    )
+
+    package = json.loads(
+        build_evidence_package_from_research_record(
+            _request_json(), research_record_json, mappings_json, "2026-07-17"
+        )
+    )
+
+    assert package["coverage"][0]["status"] == "covered"
+    assert package["research_sources"][0]["title"] == "License registry"
+
+
+def test_omits_unsafe_urls_from_an_agent_research_record() -> None:
+    research_record_json = json.dumps(
+        {
+            "agent": {"name": "Codex"},
+            "sources": [
+                {
+                    "title": "Unsafe source",
+                    "source_url": "https://user:secret@regulator.example/licenses/ABC-123",
+                    "research_excerpt": "This source must not appear.",
+                }
+            ],
+        }
+    )
+
+    package = json.loads(
+        build_evidence_package_from_research_record(
+            _request_json(), research_record_json, "[]", "2026-07-17"
+        )
+    )
+
+    assert package["research_sources"] == []

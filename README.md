@@ -30,7 +30,35 @@ uv run pytest --run-langsmith src/legacy/tests/test_report_quality.py
 
 See the synthetic input examples in [`examples/due_diligence_request.json`](examples/due_diligence_request.json) and [`examples/due_diligence_candidates.json`](examples/due_diligence_candidates.json).
 
-### Run a grounded research-output conversion
+### Bring your own research agent (recommended for Codex)
+
+The evidence gate does not require the bundled research agent. Codex, a local
+agent, or any other research system can supply a small, provider-neutral JSON
+record containing only source observations. Use the reusable
+[`examples/codex_research_prompt.md`](examples/codex_research_prompt.md) to
+ask Codex for the record, save its JSON response, then run:
+
+```bash
+uv run python -m open_deep_research.diligence_runner \
+  --request examples/due_diligence_request.json \
+  --research-record examples/codex_research_record.json \
+  --mappings examples/due_diligence_mappings.json \
+  --accessed-at 2026-07-17 \
+  --output /tmp/due_diligence_package.json
+```
+
+The record needs a `sources` array. Every entry has `title`, the exact
+credential-free HTTP(S) `source_url`, and a page-grounded `research_excerpt`.
+The optional `agent` object is descriptive only; this fork does not trust an
+agent's own evidence grades or conclusions. The runner supplies the access date
+and uses the same URL and excerpt checks for every provider.
+
+This is the default path for using Codex without embedding its current desktop
+session or any credentials into the repository. It also means the fork can
+accept a future API, local, or MCP-backed agent without changing the evidence
+gate.
+
+### Convert built-in research-tool output
 
 The current research tool emits `SOURCE / URL / SUMMARY` text. Convert it only with a mapping whose credential-free HTTP(S) `source_url` exactly appears in that text and whose `key_excerpt` occurs in an observation of that same URL; the runner supplies the access date and rejects unmapped sources, excerpts, and unsafe URLs.
 

@@ -82,3 +82,117 @@ Registry lists license ABC-123 for Example Company.
     package = json.loads(output_path.read_text(encoding="utf-8"))
     assert package["coverage"][0]["status"] == "covered"
     assert package["usable_evidence"][0]["accessed_at"] == "2026-07-17"
+
+
+def test_runner_accepts_a_platform_neutral_agent_research_record(tmp_path: Path) -> None:
+    request_path = tmp_path / "request.json"
+    research_path = tmp_path / "research-record.json"
+    mappings_path = tmp_path / "mappings.json"
+    output_path = tmp_path / "package.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "subject": "Example Company",
+                "purpose": "会前公开信息核验",
+                "claims": [
+                    {
+                        "id": "license",
+                        "statement": "公司持有某项许可",
+                        "priority": "high",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    research_path.write_text(
+        json.dumps(
+            {
+                "agent": {"name": "Codex", "mode": "interactive"},
+                "sources": [
+                    {
+                        "title": "License registry",
+                        "source_url": "https://regulator.example/licenses/ABC-123",
+                        "research_excerpt": (
+                            "Registry lists license ABC-123 for Example Company."
+                        ),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    mappings_path.write_text(
+        json.dumps(
+            [
+                {
+                    "claim_id": "license",
+                    "fact": "监管登记页列示 Example Company 持有许可。",
+                    "key_excerpt": "license ABC-123 for Example Company",
+                    "source_url": "https://regulator.example/licenses/ABC-123",
+                    "published_at": "2026-01-10",
+                    "source_type": "regulatory_record",
+                    "evidence_level": "A",
+                    "is_independent": True,
+                    "limitations": "仅核验许可存在。",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "open_deep_research.diligence_runner",
+            "--request",
+            str(request_path),
+            "--research-record",
+            str(research_path),
+            "--mappings",
+            str(mappings_path),
+            "--accessed-at",
+            "2026-07-17",
+            "--output",
+            str(output_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    package = json.loads(output_path.read_text(encoding="utf-8"))
+    assert package["coverage"][0]["status"] == "covered"
+
+
+def test_runner_executes_the_documented_codex_example(tmp_path: Path) -> None:
+    repository_root = Path(__file__).parents[1]
+    output_path = tmp_path / "package.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "open_deep_research.diligence_runner",
+            "--request",
+            str(repository_root / "examples/due_diligence_request.json"),
+            "--research-record",
+            str(repository_root / "examples/codex_research_record.json"),
+            "--mappings",
+            str(repository_root / "examples/due_diligence_mappings.json"),
+            "--accessed-at",
+            "2026-07-17",
+            "--output",
+            str(output_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    package = json.loads(output_path.read_text(encoding="utf-8"))
+    assert package["coverage"][0]["claim_id"] == "licence-exists"
+    assert package["coverage"][0]["status"] == "covered"

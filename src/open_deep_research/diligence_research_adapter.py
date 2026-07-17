@@ -28,6 +28,32 @@ def build_evidence_package_from_research_output(
     """Build evidence only from mappings grounded in the supplied research sources."""
     _validate_access_date(accessed_at)
     research_sources = extract_research_sources(research_output, accessed_at)
+    return _build_evidence_package_from_sources(
+        request_json, research_sources, mappings_json, accessed_at
+    )
+
+
+def build_evidence_package_from_research_record(
+    request_json: str,
+    research_record_json: str,
+    mappings_json: str,
+    accessed_at: str,
+) -> str:
+    """Build evidence from a platform-neutral external-agent research record."""
+    _validate_access_date(accessed_at)
+    research_sources = extract_research_record_sources(research_record_json, accessed_at)
+    return _build_evidence_package_from_sources(
+        request_json, research_sources, mappings_json, accessed_at
+    )
+
+
+def _build_evidence_package_from_sources(
+    request_json: str,
+    research_sources: list[dict[str, str]],
+    mappings_json: str,
+    accessed_at: str,
+) -> str:
+    """Apply the same source-to-mapping gate regardless of the research provider."""
     sources_by_url: dict[str, list[dict[str, str]]] = {}
     for source in research_sources:
         sources_by_url.setdefault(source["source_url"], []).append(source)
@@ -105,6 +131,56 @@ def extract_research_sources(research_output: str, accessed_at: str) -> list[dic
                 "title": match.group("title").strip(),
                 "source_url": source_url,
                 "research_excerpt": match.group("summary").strip(),
+                "accessed_at": accessed_at,
+                "limitations": "Research output is a source observation, not verified evidence.",
+            }
+        )
+    return sources
+
+
+def extract_research_record_sources(
+    research_record_json: str, accessed_at: str
+) -> list[dict[str, str]]:
+    """Extract safe source observations from a Codex or other-agent JSON record.
+
+    The record is intentionally small and provider-neutral: ``sources`` must be a
+    JSON array whose entries contain ``title``, ``source_url``, and
+    ``research_excerpt``. The caller supplies the access date so a provider cannot
+    silently claim a different retrieval date.
+    """
+    _validate_access_date(accessed_at)
+    raw_record = json.loads(research_record_json)
+    if not isinstance(raw_record, dict):
+        raise ValueError("research_record_json must contain a JSON object")
+    raw_sources = raw_record.get("sources")
+    if not isinstance(raw_sources, list):
+        raise ValueError("research_record_json must contain a sources JSON array")
+
+    sources: list[dict[str, str]] = []
+    for raw_source in raw_sources:
+        if not isinstance(raw_source, dict):
+            continue
+        title = raw_source.get("title")
+        source_url = raw_source.get("source_url")
+        research_excerpt = raw_source.get("research_excerpt")
+        if (
+            not isinstance(title, str)
+            or not isinstance(source_url, str)
+            or not isinstance(research_excerpt, str)
+            or not title.strip()
+            or not source_url.strip()
+            or not research_excerpt.strip()
+        ):
+            continue
+        try:
+            validate_source_url(source_url)
+        except ValueError:
+            continue
+        sources.append(
+            {
+                "title": title.strip(),
+                "source_url": source_url.strip(),
+                "research_excerpt": research_excerpt.strip(),
                 "accessed_at": accessed_at,
                 "limitations": "Research output is a source observation, not verified evidence.",
             }

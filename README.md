@@ -4,6 +4,20 @@
 
 Deep research has broken out as one of the most popular agent applications. This is a simple, configurable, fully open source deep research agent that works across many model providers, search tools, and MCP servers. It's performance is on par with many popular deep research agents ([see Deep Research Bench leaderboard](https://huggingface.co/spaces/Ayanami0730/DeepResearch-Leaderboard)).
 
+## Fork focus: diligence evidence packages
+
+This fork adds a small public-information diligence seam before any research report is used downstream. It converts a scoped request and source-backed candidates into a JSON package with usable evidence, rejected entries, claim coverage, and open verification items.
+
+It does **not** make cooperation, investment, hiring, or participation recommendations. A source candidate is not usable evidence unless it contains the claim link, factual statement, key excerpt, source URL, publication and access dates, source type, evidence level, independence flag, and limitations.
+
+Run the focused test:
+
+```bash
+uv run pytest tests/test_diligence_evidence.py -q
+```
+
+See the synthetic input examples in [`examples/due_diligence_request.json`](examples/due_diligence_request.json) and [`examples/due_diligence_candidates.json`](examples/due_diligence_candidates.json).
+
 <img width="817" height="666" alt="Screenshot 2025-07-13 at 11 21 12 PM" src="https://github.com/user-attachments/assets/052f2ed3-c664-4a4f-8ec2-074349dcaa3f" />
 
 ### 🔥 Recent Updates

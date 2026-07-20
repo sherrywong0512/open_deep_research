@@ -4,6 +4,132 @@
 
 Deep research has broken out as one of the most popular agent applications. This is a simple, configurable, fully open source deep research agent that works across many model providers, search tools, and MCP servers. It's performance is on par with many popular deep research agents ([see Deep Research Bench leaderboard](https://huggingface.co/spaces/Ayanami0730/DeepResearch-Leaderboard)).
 
+## Fork focus: diligence evidence packages
+
+This interview-focused fork adds an evidence-grounding seam before a research
+report is used downstream. It shows how to turn an agent's plausible-looking
+research output into an auditable public-information evidence *candidate*
+package: direct quotes, source observations, independent re-fetches, hashes,
+rejections, and explicit human-review work items.
+
+It does **not** make cooperation, investment, hiring, or participation
+recommendations. It also deliberately does not call a claim true merely because
+an agent supplied a URL and a page currently contains a matching quote. A source
+candidate needs the claim link, factual statement, key excerpt, source URL,
+publication and access dates, proposed source assessment, and limitations.
+
+For runner output, `coverage.status` has two safe outcomes:
+
+- `needs_verification`: no independently re-fetched quote survived the gate.
+- `needs_human_review`: a direct quote survived the technical gate, but a person
+  must still decide whether it supports the claim and whether the proposed source
+  type, independence, and evidence level are correct.
+
+This is the key design decision in the fork: the code verifies retrieval and
+quotation; a human retains responsibility for evidence interpretation.
+
+The lower-level `build_candidate_package` API only validates the shape of
+unverified input and returns `candidate_evidence`; it never emits verified
+candidates or `needs_human_review`.
+
+Run the focused test:
+
+```bash
+uv run pytest tests/test_diligence_evidence.py -q
+```
+
+Run the local evidence suite:
+
+```bash
+uv run pytest tests/test_diligence_evidence.py tests/test_diligence_research_adapter.py tests/test_diligence_runner.py -q
+```
+
+The upstream full suite includes a legacy LangSmith integration test and needs configured remote model, search, and LangSmith access:
+
+```bash
+uv run pytest -q
+```
+
+See the synthetic input examples in [`examples/due_diligence_request.json`](examples/due_diligence_request.json) and [`examples/due_diligence_candidates.json`](examples/due_diligence_candidates.json).
+
+### Bring your own research agent (recommended for Codex)
+
+The evidence gate does not require the bundled research agent. Codex, a local
+agent, or any other research system can supply a small, provider-neutral JSON
+record containing only source observations. Use the reusable
+[`examples/codex_research_prompt.md`](examples/codex_research_prompt.md) to
+ask Codex for the record, save its JSON response, then run:
+
+```bash
+uv run python -m open_deep_research.diligence_runner \
+  --request examples/due_diligence_request.json \
+  --research-record examples/codex_research_record.json \
+  --mappings examples/due_diligence_mappings.json \
+  --accessed-at 2026-07-17 \
+  --output /tmp/due_diligence_package.json
+```
+
+The record needs a `sources` array. Every entry has `title`, the exact
+credential-free HTTP(S) `source_url`, and a page-grounded `research_excerpt`.
+The optional `agent` object is descriptive only; this fork does not trust an
+agent's own evidence grades or conclusions. The runner supplies the access date
+and uses the same URL and excerpt checks for every provider. For every mapped
+claim, the runner fetches the public URL itself, requires the direct quote to
+occur in that response, and records the actual fetch timestamp plus its SHA-256
+hash. A failed fetch or missing quote is rejected rather than marked usable.
+High-priority `fact` values must also be the verified direct quote, not a
+paraphrase. The input's source type, evidence level, and independence values are
+returned as a `source_assessment` proposal for human review; they cannot turn a
+candidate into an automatic diligence conclusion.
+
+This is the default path for using Codex without embedding its current desktop
+session or any credentials into the repository. It also means the fork can
+accept a future API, local, or MCP-backed agent without changing the evidence
+gate. The included `*.example` URLs are synthetic format fixtures, so their
+high-priority mapping is expected to remain `needs_verification` when run.
+
+### Reproducible public-source smoke test
+
+The repository also includes a small, real public-source fixture rather than
+only a synthetic URL. It pins the upstream README to commit
+`9fe9713feeb39029e0955d410bcebcb8b0285944`, checks a dated announcement, and
+should return a verified quote candidate awaiting human review—not a claim
+conclusion. `--accessed-at` records the date of the agent observation in this
+fixture; use the date of a newly created record when researching a new source.
+
+```bash
+uv run python -m open_deep_research.diligence_runner \
+  --request examples/upstream_readme_request.json \
+  --research-record examples/upstream_readme_record.json \
+  --mappings examples/upstream_readme_mappings.json \
+  --accessed-at 2026-07-20
+```
+
+### Convert built-in research-tool output
+
+The current research tool emits `SOURCE / URL / SUMMARY` text. Convert it only with a mapping whose credential-free HTTP(S) `source_url` exactly appears in that text and whose `key_excerpt` occurs in an observation of that same URL; the runner supplies the access date and rejects unmapped sources, excerpts, and unsafe URLs.
+
+```bash
+uv run python -m open_deep_research.diligence_runner \
+  --request examples/due_diligence_request.json \
+  --research-output examples/due_diligence_research_output.txt \
+  --mappings examples/due_diligence_mappings.json \
+  --accessed-at 2026-07-17 \
+  --output /tmp/due_diligence_package.json
+```
+
+Research summaries are source observations, not facts. A mapping still needs a claim, factual excerpt, publication date, source type, evidence level, independence flag, and limitations before the evidence gate can produce a candidate. High-priority mappings must use the verified direct quote itself as `fact`; an explanatory paraphrase belongs in a separate note, not in evidence.
+
+### What the runner verifies — and what it does not
+
+The runner resolves and pins a public IP before connecting, rejects private or
+credential-bearing URLs, refuses redirects, limits response size, records the
+raw-response SHA-256 and fetch time, and matches the quote against static text or
+gzip-compressed HTML DOM text (excluding `script` and `style`). It intentionally does not execute JavaScript,
+read PDFs, bypass access controls, infer source authority, or infer that a quote
+semantically proves a broader business claim. Those boundaries are testable and
+are preferable to an impressive-looking but overconfident research report.
+
 <img width="817" height="666" alt="Screenshot 2025-07-13 at 11 21 12 PM" src="https://github.com/user-attachments/assets/052f2ed3-c664-4a4f-8ec2-074349dcaa3f" />
 
 ### 🔥 Recent Updates

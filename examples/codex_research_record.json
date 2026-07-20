@@ -1,0 +1,13 @@
+{
+  "agent": {
+    "name": "Codex",
+    "mode": "interactive"
+  },
+  "sources": [
+    {
+      "title": "Synthetic license registry",
+      "source_url": "https://regulator.example/licenses/ABC-123",
+      "research_excerpt": "监管登记页列示许可证编号：ABC-123。"
+    }
+  ]
+}

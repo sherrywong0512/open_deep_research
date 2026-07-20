@@ -1,0 +1,9 @@
+Search results:
+
+--- SOURCE 1: Synthetic regulator register ---
+URL: https://regulator.example/licenses/ABC-123
+
+SUMMARY:
+Synthetic registry entry lists 许可证编号：ABC-123 for Synthetic Example Company.
+
+--------------------------------------------------------------------------------

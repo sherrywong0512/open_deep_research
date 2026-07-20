@@ -1,0 +1,11 @@
+{
+  "subject": "Synthetic Example Company",
+  "purpose": "会前公开信息核验",
+  "claims": [
+    {
+      "id": "licence-exists",
+      "statement": "公司持有公开可核验的许可。",
+      "priority": "high"
+    }
+  ]
+}

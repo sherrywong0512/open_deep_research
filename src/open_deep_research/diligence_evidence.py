@@ -1,0 +1,204 @@
+"""Build traceable evidence packages for public-information diligence."""
+
+import json
+import re
+from datetime import date
+from typing import Any, Literal
+from urllib.parse import urlsplit
+
+from pydantic import BaseModel, ValidationError, field_validator
+
+
+class DiligenceClaim(BaseModel):
+    """Describe one public-information claim that needs verification."""
+
+    id: str
+    statement: str
+    priority: Literal["high", "normal"] = "normal"
+
+
+class DiligenceRequest(BaseModel):
+    """Define the scope for one diligence evidence package."""
+
+    subject: str
+    purpose: str
+    claims: list[DiligenceClaim]
+
+
+class EvidenceCandidate(BaseModel):
+    """Represent one source-backed factual candidate."""
+
+    claim_id: str
+    fact: str
+    key_excerpt: str
+    source_url: str
+    published_at: date
+    accessed_at: date
+    source_type: str
+    evidence_level: Literal["A", "B", "C", "U"]
+    is_independent: bool
+    limitations: str
+
+    @field_validator("source_url", mode="before")
+    @classmethod
+    def require_http_url(cls, value: Any) -> Any:
+        """Validate an HTTP(S) URL while retaining its original representation."""
+        return validate_source_url(value)
+
+    @field_validator("published_at", "accessed_at", mode="before")
+    @classmethod
+    def require_iso_date(cls, value: Any) -> Any:
+        """Accept only complete ISO calendar dates without a time component."""
+        if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            raise ValueError("must use the YYYY-MM-DD ISO date format")
+        return value
+
+
+_REQUIRED_CANDIDATE_FIELDS = (
+    "claim_id",
+    "fact",
+    "key_excerpt",
+    "source_url",
+    "published_at",
+    "accessed_at",
+    "source_type",
+    "evidence_level",
+    "is_independent",
+    "limitations",
+)
+
+
+def build_candidate_package(request_json: str, candidates_json: str) -> str:
+    """Validate unverified candidate metadata without asserting source retrieval."""
+    request = DiligenceRequest.model_validate_json(request_json)
+    raw_candidates = json.loads(candidates_json)
+    if not isinstance(raw_candidates, list):
+        raise ValueError("candidates_json must contain a JSON array")
+
+    claim_ids = {claim.id for claim in request.claims}
+    usable_evidence: list[dict[str, Any]] = []
+    rejected_evidence: list[dict[str, Any]] = []
+
+    for raw_candidate in raw_candidates:
+        candidate_data = raw_candidate if isinstance(raw_candidate, dict) else {}
+        claim_id = candidate_data.get("claim_id")
+        missing_fields = _missing_fields(candidate_data)
+
+        if missing_fields:
+            rejected_evidence.append(
+                {
+                    "claim_id": claim_id,
+                    "missing_fields": missing_fields,
+                    "reason": "missing_required_fields",
+                }
+            )
+            continue
+
+        try:
+            candidate = EvidenceCandidate.model_validate(candidate_data)
+        except ValidationError:
+            rejected_evidence.append(
+                {
+                    "claim_id": claim_id,
+                    "missing_fields": missing_fields,
+                    "reason": "invalid_candidate",
+                }
+            )
+            continue
+
+        if candidate.claim_id not in claim_ids:
+            rejected_evidence.append(
+                {
+                    "claim_id": candidate.claim_id,
+                    "missing_fields": [],
+                    "reason": "unknown_claim",
+                }
+            )
+            continue
+
+        usable_evidence.append(candidate.model_dump(mode="json"))
+
+    coverage = _coverage_for(request)
+    open_verification_items = [
+        {
+            "claim_id": item["claim_id"],
+            "statement": item["statement"],
+            "reason": "missing_independent_A_or_B_evidence"
+            if item["priority"] == "high"
+            else "missing_usable_evidence",
+        }
+        for item in coverage
+        if item["status"] == "needs_verification"
+    ]
+    output_evidence = [_as_evidence_candidate(item) for item in usable_evidence]
+
+    return json.dumps(
+        {
+            "subject": request.subject,
+            "purpose": request.purpose,
+            "candidate_evidence": output_evidence,
+            "rejected_evidence": rejected_evidence,
+            "coverage": coverage,
+            "open_verification_items": open_verification_items,
+        },
+        ensure_ascii=False,
+    )
+
+
+def _missing_fields(candidate: dict[str, Any]) -> list[str]:
+    """List required fields that are absent or empty."""
+    return [
+        field
+        for field in _REQUIRED_CANDIDATE_FIELDS
+        if field not in candidate
+        or candidate[field] is None
+        or (isinstance(candidate[field], str) and not candidate[field].strip())
+    ]
+
+
+def validate_source_url(value: Any) -> str:
+    """Validate a credential-free HTTP(S) URL without rewriting its representation."""
+    if not isinstance(value, str) or any(char.isspace() for char in value):
+        raise ValueError("must be a credential-free HTTP(S) URL")
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise ValueError("must be a credential-free HTTP(S) URL")
+    try:
+        parsed.port
+    except ValueError as error:
+        raise ValueError("must have a valid URL port") from error
+    return value
+
+
+def _coverage_for(request: DiligenceRequest) -> list[dict[str, str]]:
+    """Report whether every requested claim has sufficient usable evidence."""
+    coverage: list[dict[str, str]] = []
+    for claim in request.claims:
+        coverage.append(
+            {
+                "claim_id": claim.id,
+                "statement": claim.statement,
+                "priority": claim.priority,
+                # Metadata alone does not establish that the source was fetched or
+                # that the quote supports the claim. The adapter promotes only
+                # independently re-fetched candidates to human review.
+                "status": "needs_verification",
+            }
+        )
+    return coverage
+
+
+def _as_evidence_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Label agent-supplied source classification as a reviewable proposal."""
+    output = dict(candidate)
+    output["source_assessment"] = {
+        "proposed_source_type": output.pop("source_type"),
+        "proposed_evidence_level": output.pop("evidence_level"),
+        "proposed_is_independent": output.pop("is_independent"),
+    }
+    return output

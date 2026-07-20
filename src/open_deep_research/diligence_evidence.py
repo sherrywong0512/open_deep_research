@@ -130,15 +130,27 @@ def build_evidence_package(request_json: str, candidates_json: str) -> str:
         for item in coverage
         if item["status"] == "needs_verification"
     ]
+    human_review_items = [
+        {
+            "claim_id": item["claim_id"],
+            "statement": item["statement"],
+            "reason": "confirm_quote_supports_claim_and_source_assessment",
+        }
+        for item in coverage
+        if item["status"] == "needs_human_review"
+    ]
+
+    output_evidence = [_as_evidence_candidate(item) for item in usable_evidence]
 
     return json.dumps(
         {
             "subject": request.subject,
             "purpose": request.purpose,
-            "usable_evidence": usable_evidence,
+            "usable_evidence": output_evidence,
             "rejected_evidence": rejected_evidence,
             "coverage": coverage,
             "open_verification_items": open_verification_items,
+            "human_review_items": human_review_items,
         },
         ensure_ascii=False,
     )
@@ -183,19 +195,28 @@ def _coverage_for(
         claim_evidence = [
             item for item in usable_evidence if item["claim_id"] == claim.id
         ]
-        has_independent_primary_evidence = any(
-            item["is_independent"] and item["evidence_level"] in {"A", "B"}
-            for item in claim_evidence
-        )
-        is_covered = bool(claim_evidence) and (
-            claim.priority != "high" or has_independent_primary_evidence
-        )
         coverage.append(
             {
                 "claim_id": claim.id,
                 "statement": claim.statement,
                 "priority": claim.priority,
-                "status": "covered" if is_covered else "needs_verification",
+                # A fetched quote establishes only that the page contains the quote.
+                # Whether it supports the claim and whether the source deserves its
+                # proposed grade are diligence judgments, not agent decisions.
+                "status": (
+                    "needs_human_review" if claim_evidence else "needs_verification"
+                ),
             }
         )
     return coverage
+
+
+def _as_evidence_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Label agent-supplied source classification as a reviewable proposal."""
+    output = dict(candidate)
+    output["source_assessment"] = {
+        "proposed_source_type": output.pop("source_type"),
+        "proposed_evidence_level": output.pop("evidence_level"),
+        "proposed_is_independent": output.pop("is_independent"),
+    }
+    return output

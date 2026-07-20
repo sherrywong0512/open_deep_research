@@ -1,5 +1,6 @@
 """Behavioral tests for converting research-tool output into evidence packages."""
 
+import gzip
 import json
 import socket
 
@@ -75,7 +76,7 @@ def test_builds_evidence_only_when_mapping_points_to_observed_source() -> None:
     )
 
     assert package["usable_evidence"][0]["accessed_at"] == "2026-07-17"
-    assert package["coverage"][0]["status"] == "covered"
+    assert package["coverage"][0]["status"] == "needs_human_review"
     assert package["research_sources"][0]["source_url"] == (
         "https://regulator.example/licenses/ABC-123"
     )
@@ -232,7 +233,7 @@ Later observation contains different context.
         )
     )
 
-    assert package["coverage"][0]["status"] == "covered"
+    assert package["coverage"][0]["status"] == "needs_human_review"
 
 
 def test_builds_evidence_from_a_platform_neutral_agent_research_record() -> None:
@@ -276,7 +277,7 @@ def test_builds_evidence_from_a_platform_neutral_agent_research_record() -> None
         )
     )
 
-    assert package["coverage"][0]["status"] == "covered"
+    assert package["coverage"][0]["status"] == "needs_human_review"
     assert package["research_sources"][0]["title"] == "License registry"
 
 
@@ -350,8 +351,48 @@ def test_high_priority_external_agent_evidence_requires_page_verification() -> N
 
     assert unverified_package["coverage"][0]["status"] == "needs_verification"
     assert unverified_package["rejected_evidence"][0]["reason"] == "source_not_verified"
-    assert verified_package["coverage"][0]["status"] == "covered"
+    assert verified_package["coverage"][0]["status"] == "needs_human_review"
     assert verified_package["source_verifications"][0]["content_sha256"] == "a" * 64
+
+
+def test_verified_quote_is_a_candidate_not_an_automatic_claim_conclusion() -> None:
+    package = json.loads(
+        build_evidence_package_from_research_output(
+            _request_json(),
+            _research_output(),
+            json.dumps(
+                [
+                    {
+                        "claim_id": "license",
+                        "fact": "license ABC-123 for Example Company",
+                        "key_excerpt": "license ABC-123 for Example Company",
+                        "source_url": "https://regulator.example/licenses/ABC-123",
+                        "published_at": "2026-01-10",
+                        "source_type": "regulatory_record",
+                        "evidence_level": "A",
+                        "is_independent": True,
+                        "limitations": "仅核验许可存在。",
+                    }
+                ]
+            ),
+            "2026-07-20",
+            source_verifier=_verified_source,
+        )
+    )
+
+    assert package["coverage"][0]["status"] == "needs_human_review"
+    assert package["human_review_items"] == [
+        {
+            "claim_id": "license",
+            "statement": "公司持有某项许可",
+            "reason": "confirm_quote_supports_claim_and_source_assessment",
+        }
+    ]
+    assert package["usable_evidence"][0]["source_assessment"] == {
+        "proposed_evidence_level": "A",
+        "proposed_is_independent": True,
+        "proposed_source_type": "regulatory_record",
+    }
 
 
 def test_high_priority_fact_must_be_the_verified_direct_quote() -> None:
@@ -434,7 +475,7 @@ def test_public_source_fetcher_records_hash_for_pinned_content(
     )
     monkeypatch.setattr(
         "open_deep_research.diligence_research_adapter._fetch_pinned_public_content",
-        lambda *_args: b"verified direct quote",
+        lambda *_args: (b"verified direct quote", None, "text/plain"),
     )
 
     verification = fetch_public_source(
@@ -446,6 +487,29 @@ def test_public_source_fetcher_records_hash_for_pinned_content(
     assert verification.content_sha256 == (
         "85c94c76eb3f9f314c71dd9797fbfd8a250ea6bfe78c9db80ecd605864b18b22"
     )
+
+
+def test_public_source_fetcher_extracts_text_from_compressed_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "open_deep_research.diligence_research_adapter._public_network_target",
+        lambda _url: ("example.test", 443, "93.184.216.34"),
+    )
+    monkeypatch.setattr(
+        "open_deep_research.diligence_research_adapter._fetch_pinned_public_content",
+        lambda *_args: (
+            gzip.compress(b"<html><body>verified <strong>direct</strong> quote</body></html>"),
+            "gzip",
+            "text/html",
+        ),
+    )
+
+    verification = fetch_public_source(
+        "https://example.test/source", "verified direct quote"
+    )
+
+    assert verification.status == "verified"
 
 
 def test_unverified_normal_priority_agent_evidence_is_not_usable() -> None:

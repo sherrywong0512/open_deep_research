@@ -40,7 +40,10 @@ def test_builds_usable_evidence_for_a_complete_candidate() -> None:
 
     assert package["usable_evidence"][0]["claim_id"] == "claim-1"
     assert package["rejected_evidence"] == []
-    assert package["coverage"][0]["status"] == "covered"
+    assert package["coverage"][0]["status"] == "needs_human_review"
+    assert package["human_review_items"][0]["reason"] == (
+        "confirm_quote_supports_claim_and_source_assessment"
+    )
 
 
 def test_rejects_candidate_without_a_source_and_marks_claim_for_verification() -> None:

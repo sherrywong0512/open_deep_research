@@ -1,5 +1,6 @@
 """Convert research-tool source output into grounded diligence evidence packages."""
 
+import gzip
 import json
 import re
 import socket
@@ -7,6 +8,7 @@ import ssl
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from hashlib import sha256
+from html.parser import HTMLParser
 from http.client import HTTPResponse
 from ipaddress import ip_address
 from typing import Any, Callable, Literal
@@ -26,6 +28,27 @@ _SOURCE_PATTERN = re.compile(
 )
 _ISO_DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
 _MAX_SOURCE_BYTES = 2_000_000
+
+
+class _VisibleTextExtractor(HTMLParser):
+    """Extract display text without treating scripts or styles as evidence."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._suppressed_tags: list[str] = []
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, _attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style"}:
+            self._suppressed_tags.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._suppressed_tags and self._suppressed_tags[-1] == tag:
+            self._suppressed_tags.pop()
+
+    def handle_data(self, data: str) -> None:
+        if not self._suppressed_tags:
+            self.parts.append(data)
 
 
 @dataclass(frozen=True)
@@ -192,14 +215,23 @@ def fetch_public_source(source_url: str, key_excerpt: str) -> SourceVerification
         return SourceVerification(status="fetch_failed")
     fetched_at = datetime.now(timezone.utc).isoformat()
     try:
-        content = _fetch_pinned_public_content(source_url, hostname, port, address)
+        content, content_encoding, content_type = _fetch_pinned_public_content(
+            source_url, hostname, port, address
+        )
     except (OSError, ValueError):
         return SourceVerification(status="fetch_failed", fetched_at=fetched_at)
 
     if len(content) > _MAX_SOURCE_BYTES:
         return SourceVerification(status="fetch_failed", fetched_at=fetched_at)
     content_sha256 = sha256(content).hexdigest()
-    page_text = content.decode("utf-8", errors="replace")
+    try:
+        page_text = _extract_public_text(content, content_encoding, content_type)
+    except (OSError, ValueError):
+        return SourceVerification(
+            status="fetch_failed",
+            content_sha256=content_sha256,
+            fetched_at=fetched_at,
+        )
     if _normalise_text(key_excerpt) not in _normalise_text(page_text):
         return SourceVerification(
             status="excerpt_not_found",
@@ -233,7 +265,7 @@ def _public_network_target(source_url: str) -> tuple[str, int, str]:
 
 def _fetch_pinned_public_content(
     source_url: str, hostname: str, port: int, address: str
-) -> bytes:
+) -> tuple[bytes, str | None, str | None]:
     """Fetch one response through a socket pinned to a previously verified IP."""
     parsed = urlsplit(source_url)
     target = parsed.path or "/"
@@ -259,10 +291,37 @@ def _fetch_pinned_public_content(
             response.begin()
             if response.status < 200 or response.status >= 300:
                 raise ValueError("source response must be a non-redirect success")
-            return response.read(_MAX_SOURCE_BYTES + 1)
+            return (
+                response.read(_MAX_SOURCE_BYTES + 1),
+                response.getheader("Content-Encoding"),
+                response.getheader("Content-Type"),
+            )
         finally:
             if socket_for_response is not raw_socket:
                 socket_for_response.close()
+
+
+def _extract_public_text(
+    content: bytes, content_encoding: str | None, content_type: str | None
+) -> str:
+    """Decode supported static text/HTML responses for direct-quote matching."""
+    encoding = (content_encoding or "").casefold().strip()
+    if encoding in {"", "identity"}:
+        decoded = content
+    elif encoding == "gzip":
+        decoded = gzip.decompress(content)
+    else:
+        raise ValueError("unsupported content encoding")
+    if len(decoded) > _MAX_SOURCE_BYTES:
+        raise ValueError("decoded source exceeds maximum size")
+
+    text = decoded.decode("utf-8", errors="replace")
+    if "html" not in (content_type or "").casefold():
+        return text
+    parser = _VisibleTextExtractor()
+    parser.feed(text)
+    parser.close()
+    return " ".join(parser.parts)
 
 
 def extract_research_sources(research_output: str, accessed_at: str) -> list[dict[str, str]]:

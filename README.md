@@ -6,9 +6,27 @@ Deep research has broken out as one of the most popular agent applications. This
 
 ## Fork focus: diligence evidence packages
 
-This fork adds a small public-information diligence seam before any research report is used downstream. It converts a scoped request and source-backed candidates into a JSON package with usable evidence, rejected entries, claim coverage, and open verification items.
+This interview-focused fork adds an evidence-grounding seam before a research
+report is used downstream. It shows how to turn an agent's plausible-looking
+research output into an auditable public-information evidence *candidate*
+package: direct quotes, source observations, independent re-fetches, hashes,
+rejections, and explicit human-review work items.
 
-It does **not** make cooperation, investment, hiring, or participation recommendations. A source candidate is not usable evidence unless it contains the claim link, factual statement, key excerpt, source URL, publication and access dates, source type, evidence level, independence flag, and limitations.
+It does **not** make cooperation, investment, hiring, or participation
+recommendations. It also deliberately does not call a claim true merely because
+an agent supplied a URL and a page currently contains a matching quote. A source
+candidate needs the claim link, factual statement, key excerpt, source URL,
+publication and access dates, proposed source assessment, and limitations.
+
+`coverage.status` has two safe outcomes:
+
+- `needs_verification`: no independently re-fetched quote survived the gate.
+- `needs_human_review`: a direct quote survived the technical gate, but a person
+  must still decide whether it supports the claim and whether the proposed source
+  type, independence, and evidence level are correct.
+
+This is the key design decision in the fork: the code verifies retrieval and
+quotation; a human retains responsibility for evidence interpretation.
 
 Run the focused test:
 
@@ -56,7 +74,9 @@ claim, the runner fetches the public URL itself, requires the direct quote to
 occur in that response, and records the actual fetch timestamp plus its SHA-256
 hash. A failed fetch or missing quote is rejected rather than marked usable.
 High-priority `fact` values must also be the verified direct quote, not a
-paraphrase.
+paraphrase. The input's source type, evidence level, and independence values are
+returned as a `source_assessment` proposal for human review; they cannot turn a
+candidate into an automatic diligence conclusion.
 
 This is the default path for using Codex without embedding its current desktop
 session or any credentials into the repository. It also means the fork can
@@ -77,7 +97,17 @@ uv run python -m open_deep_research.diligence_runner \
   --output /tmp/due_diligence_package.json
 ```
 
-Research summaries are source observations, not facts. A mapping still needs a claim, factual excerpt, publication date, source type, evidence level, independence flag, and limitations before the existing evidence gate can mark it usable. High-priority mappings must use the verified direct quote itself as `fact`; an explanatory paraphrase belongs in a separate note, not in evidence.
+Research summaries are source observations, not facts. A mapping still needs a claim, factual excerpt, publication date, source type, evidence level, independence flag, and limitations before the evidence gate can produce a candidate. High-priority mappings must use the verified direct quote itself as `fact`; an explanatory paraphrase belongs in a separate note, not in evidence.
+
+### What the runner verifies — and what it does not
+
+The runner resolves and pins a public IP before connecting, rejects private or
+credential-bearing URLs, refuses redirects, limits response size, records the
+raw-response SHA-256 and fetch time, and matches the quote against static text or
+gzip-compressed HTML visible text. It intentionally does not execute JavaScript,
+read PDFs, bypass access controls, infer source authority, or infer that a quote
+semantically proves a broader business claim. Those boundaries are testable and
+are preferable to an impressive-looking but overconfident research report.
 
 <img width="817" height="666" alt="Screenshot 2025-07-13 at 11 21 12 PM" src="https://github.com/user-attachments/assets/052f2ed3-c664-4a4f-8ec2-074349dcaa3f" />
 

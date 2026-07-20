@@ -3,10 +3,40 @@
 import json
 import subprocess
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import pytest
 
-def test_runner_writes_a_grounded_evidence_package(tmp_path: Path) -> None:
+
+@pytest.fixture
+def page_url() -> str:
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            body = b"Registry lists license ABC-123 for Example Company."
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/license"
+    finally:
+        server.shutdown()
+        thread.join()
+
+
+def test_runner_writes_a_grounded_evidence_package(
+    tmp_path: Path, page_url: str
+) -> None:
     request_path = tmp_path / "request.json"
     research_path = tmp_path / "research.txt"
     mappings_path = tmp_path / "mappings.json"
@@ -28,8 +58,8 @@ def test_runner_writes_a_grounded_evidence_package(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     research_path.write_text(
-        """--- SOURCE 1: License registry ---
-URL: https://regulator.example/licenses/ABC-123
+        f"""--- SOURCE 1: License registry ---
+URL: {page_url}
 
 SUMMARY:
 Registry lists license ABC-123 for Example Company.
@@ -43,9 +73,9 @@ Registry lists license ABC-123 for Example Company.
             [
                 {
                     "claim_id": "license",
-                    "fact": "监管登记页列示 Example Company 持有许可。",
+                    "fact": "license ABC-123 for Example Company",
                     "key_excerpt": "license ABC-123 for Example Company",
-                    "source_url": "https://regulator.example/licenses/ABC-123",
+                    "source_url": page_url,
                     "published_at": "2026-01-10",
                     "source_type": "regulatory_record",
                     "evidence_level": "A",
@@ -80,11 +110,13 @@ Registry lists license ABC-123 for Example Company.
 
     assert result.returncode == 0, result.stderr
     package = json.loads(output_path.read_text(encoding="utf-8"))
-    assert package["coverage"][0]["status"] == "covered"
-    assert package["usable_evidence"][0]["accessed_at"] == "2026-07-17"
+    assert package["coverage"][0]["status"] == "needs_verification"
+    assert package["rejected_evidence"][0]["reason"] == "source_not_verified"
 
 
-def test_runner_accepts_a_platform_neutral_agent_research_record(tmp_path: Path) -> None:
+def test_runner_accepts_a_platform_neutral_agent_research_record(
+    tmp_path: Path, page_url: str
+) -> None:
     request_path = tmp_path / "request.json"
     research_path = tmp_path / "research-record.json"
     mappings_path = tmp_path / "mappings.json"
@@ -112,7 +144,7 @@ def test_runner_accepts_a_platform_neutral_agent_research_record(tmp_path: Path)
                 "sources": [
                     {
                         "title": "License registry",
-                        "source_url": "https://regulator.example/licenses/ABC-123",
+                        "source_url": page_url,
                         "research_excerpt": (
                             "Registry lists license ABC-123 for Example Company."
                         ),
@@ -127,9 +159,9 @@ def test_runner_accepts_a_platform_neutral_agent_research_record(tmp_path: Path)
             [
                 {
                     "claim_id": "license",
-                    "fact": "监管登记页列示 Example Company 持有许可。",
+                    "fact": "license ABC-123 for Example Company",
                     "key_excerpt": "license ABC-123 for Example Company",
-                    "source_url": "https://regulator.example/licenses/ABC-123",
+                    "source_url": page_url,
                     "published_at": "2026-01-10",
                     "source_type": "regulatory_record",
                     "evidence_level": "A",
@@ -164,7 +196,8 @@ def test_runner_accepts_a_platform_neutral_agent_research_record(tmp_path: Path)
 
     assert result.returncode == 0, result.stderr
     package = json.loads(output_path.read_text(encoding="utf-8"))
-    assert package["coverage"][0]["status"] == "covered"
+    assert package["coverage"][0]["status"] == "needs_verification"
+    assert package["rejected_evidence"][0]["reason"] == "source_not_verified"
 
 
 def test_runner_executes_the_documented_codex_example(tmp_path: Path) -> None:
@@ -195,4 +228,4 @@ def test_runner_executes_the_documented_codex_example(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     package = json.loads(output_path.read_text(encoding="utf-8"))
     assert package["coverage"][0]["claim_id"] == "licence-exists"
-    assert package["coverage"][0]["status"] == "covered"
+    assert package["coverage"][0]["status"] == "needs_verification"

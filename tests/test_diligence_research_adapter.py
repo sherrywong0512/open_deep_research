@@ -1,11 +1,16 @@
 """Behavioral tests for converting research-tool output into evidence packages."""
 
 import json
+import socket
+
+import pytest
 
 from open_deep_research.diligence_research_adapter import (
+    SourceVerification,
     build_evidence_package_from_research_output,
     build_evidence_package_from_research_record,
     extract_research_sources,
+    fetch_public_source,
 )
 
 
@@ -38,12 +43,16 @@ Registry lists license ABC-123 for Example Company.
 """
 
 
+def _verified_source(_source_url: str, _key_excerpt: str) -> SourceVerification:
+    return SourceVerification(status="verified", content_sha256="a" * 64)
+
+
 def test_builds_evidence_only_when_mapping_points_to_observed_source() -> None:
     mappings_json = json.dumps(
         [
             {
                 "claim_id": "license",
-                "fact": "监管登记页列示 Example Company 持有许可。",
+                "fact": "license ABC-123 for Example Company",
                 "key_excerpt": "license ABC-123 for Example Company",
                 "source_url": "https://regulator.example/licenses/ABC-123",
                 "published_at": "2026-01-10",
@@ -57,7 +66,11 @@ def test_builds_evidence_only_when_mapping_points_to_observed_source() -> None:
 
     package = json.loads(
         build_evidence_package_from_research_output(
-            _request_json(), _research_output(), mappings_json, "2026-07-17"
+            _request_json(),
+            _research_output(),
+            mappings_json,
+            "2026-07-17",
+            source_verifier=_verified_source,
         )
     )
 
@@ -137,7 +150,7 @@ Registry entry says root-source excerpt.
         [
             {
                 "claim_id": "license",
-                "fact": "监管登记页列示公司持有许可。",
+                "fact": "root-source excerpt",
                 "key_excerpt": "root-source excerpt",
                 "source_url": "https://regulator.example",
                 "published_at": "2026-01-10",
@@ -151,7 +164,11 @@ Registry entry says root-source excerpt.
 
     package = json.loads(
         build_evidence_package_from_research_output(
-            _request_json(), research_output, mappings_json, "2026-07-17"
+            _request_json(),
+            research_output,
+            mappings_json,
+            "2026-07-17",
+            source_verifier=_verified_source,
         )
     )
 
@@ -193,7 +210,7 @@ Later observation contains different context.
         [
             {
                 "claim_id": "license",
-                "fact": "监管登记页列示公司持有许可。",
+                "fact": "licence excerpt ABC-123",
                 "key_excerpt": "licence excerpt ABC-123",
                 "source_url": "https://regulator.example/licenses/ABC-123",
                 "published_at": "2026-01-10",
@@ -207,7 +224,11 @@ Later observation contains different context.
 
     package = json.loads(
         build_evidence_package_from_research_output(
-            _request_json(), research_output, mappings_json, "2026-07-17"
+            _request_json(),
+            research_output,
+            mappings_json,
+            "2026-07-17",
+            source_verifier=_verified_source,
         )
     )
 
@@ -233,7 +254,7 @@ def test_builds_evidence_from_a_platform_neutral_agent_research_record() -> None
         [
             {
                 "claim_id": "license",
-                "fact": "监管登记页列示 Example Company 持有许可。",
+                "fact": "license ABC-123 for Example Company",
                 "key_excerpt": "license ABC-123 for Example Company",
                 "source_url": "https://regulator.example/licenses/ABC-123",
                 "published_at": "2026-01-10",
@@ -247,7 +268,11 @@ def test_builds_evidence_from_a_platform_neutral_agent_research_record() -> None
 
     package = json.loads(
         build_evidence_package_from_research_record(
-            _request_json(), research_record_json, mappings_json, "2026-07-17"
+            _request_json(),
+            research_record_json,
+            mappings_json,
+            "2026-07-17",
+            source_verifier=_verified_source,
         )
     )
 
@@ -276,3 +301,194 @@ def test_omits_unsafe_urls_from_an_agent_research_record() -> None:
     )
 
     assert package["research_sources"] == []
+
+
+def test_high_priority_external_agent_evidence_requires_page_verification() -> None:
+    research_record_json = json.dumps(
+        {
+            "sources": [
+                {
+                    "title": "License registry",
+                    "source_url": "https://regulator.example/licenses/ABC-123",
+                    "research_excerpt": "Registry lists license ABC-123 for Example Company.",
+                }
+            ]
+        }
+    )
+    mappings_json = json.dumps(
+        [
+            {
+                "claim_id": "license",
+                "fact": "license ABC-123 for Example Company",
+                "key_excerpt": "license ABC-123 for Example Company",
+                "source_url": "https://regulator.example/licenses/ABC-123",
+                "published_at": "2026-01-10",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "仅核验许可存在。",
+            }
+        ]
+    )
+
+    unverified_package = json.loads(
+        build_evidence_package_from_research_record(
+            _request_json(), research_record_json, mappings_json, "2026-07-17"
+        )
+    )
+    verified_package = json.loads(
+        build_evidence_package_from_research_record(
+            _request_json(),
+            research_record_json,
+            mappings_json,
+            "2026-07-17",
+            source_verifier=lambda _url, _excerpt: SourceVerification(
+                status="verified", content_sha256="a" * 64
+            ),
+        )
+    )
+
+    assert unverified_package["coverage"][0]["status"] == "needs_verification"
+    assert unverified_package["rejected_evidence"][0]["reason"] == "source_not_verified"
+    assert verified_package["coverage"][0]["status"] == "covered"
+    assert verified_package["source_verifications"][0]["content_sha256"] == "a" * 64
+
+
+def test_high_priority_fact_must_be_the_verified_direct_quote() -> None:
+    research_record_json = json.dumps(
+        {
+            "sources": [
+                {
+                    "title": "License registry",
+                    "source_url": "https://regulator.example/licenses/ABC-123",
+                    "research_excerpt": "Registry lists license ABC-123 for Example Company.",
+                }
+            ]
+        }
+    )
+    mappings_json = json.dumps(
+        [
+            {
+                "claim_id": "license",
+                "fact": "公司已获得所有必要许可。",
+                "key_excerpt": "license ABC-123 for Example Company",
+                "source_url": "https://regulator.example/licenses/ABC-123",
+                "published_at": "2026-01-10",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "仅核验许可存在。",
+            }
+        ]
+    )
+
+    package = json.loads(
+        build_evidence_package_from_research_record(
+            _request_json(),
+            research_record_json,
+            mappings_json,
+            "2026-07-17",
+            source_verifier=_verified_source,
+        )
+    )
+
+    assert package["coverage"][0]["status"] == "needs_verification"
+    assert package["rejected_evidence"][0]["reason"] == "fact_not_direct_quote"
+
+
+def test_public_source_fetcher_rejects_loopback_urls() -> None:
+    verification = fetch_public_source(
+        "http://127.0.0.1:9999/internal", "internal"
+    )
+
+    assert verification.status == "fetch_failed"
+
+
+def test_public_source_fetcher_pins_the_verified_dns_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connected_to: list[tuple[str, int]] = []
+
+    def fake_getaddrinfo(*_args: object, **_kwargs: object) -> list[tuple[object, ...]]:
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
+
+    def fake_create_connection(address: tuple[str, int], timeout: int) -> object:
+        connected_to.append(address)
+        raise OSError("stop before network")
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(socket, "create_connection", fake_create_connection)
+
+    verification = fetch_public_source("https://example.test/source", "quote")
+
+    assert verification.status == "fetch_failed"
+    assert connected_to == [("93.184.216.34", 443)]
+
+
+def test_public_source_fetcher_records_hash_for_pinned_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "open_deep_research.diligence_research_adapter._public_network_target",
+        lambda _url: ("example.test", 443, "93.184.216.34"),
+    )
+    monkeypatch.setattr(
+        "open_deep_research.diligence_research_adapter._fetch_pinned_public_content",
+        lambda *_args: b"verified direct quote",
+    )
+
+    verification = fetch_public_source(
+        "https://example.test/source", "verified direct quote"
+    )
+
+    assert verification.status == "verified"
+    assert verification.fetched_at is not None
+    assert verification.content_sha256 == (
+        "85c94c76eb3f9f314c71dd9797fbfd8a250ea6bfe78c9db80ecd605864b18b22"
+    )
+
+
+def test_unverified_normal_priority_agent_evidence_is_not_usable() -> None:
+    request_json = json.dumps(
+        {
+            "subject": "Example Company",
+            "purpose": "会前公开信息核验",
+            "claims": [{"id": "license", "statement": "许可", "priority": "normal"}],
+        }
+    )
+    research_record_json = json.dumps(
+        {
+            "sources": [
+                {
+                    "title": "License registry",
+                    "source_url": "https://regulator.example/licenses/ABC-123",
+                    "research_excerpt": "license ABC-123 for Example Company",
+                }
+            ]
+        }
+    )
+    mappings_json = json.dumps(
+        [
+            {
+                "claim_id": "license",
+                "fact": "公司持有许可。",
+                "key_excerpt": "license ABC-123 for Example Company",
+                "source_url": "https://regulator.example/licenses/ABC-123",
+                "published_at": "2026-01-10",
+                "source_type": "regulatory_record",
+                "evidence_level": "A",
+                "is_independent": True,
+                "limitations": "仅核验许可存在。",
+            }
+        ]
+    )
+
+    package = json.loads(
+        build_evidence_package_from_research_record(
+            request_json, research_record_json, mappings_json, "2026-07-20"
+        )
+    )
+
+    assert package["usable_evidence"] == []
+    assert package["coverage"][0]["status"] == "needs_verification"
+    assert package["rejected_evidence"][0]["reason"] == "source_not_verified"

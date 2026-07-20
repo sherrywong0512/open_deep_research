@@ -8,6 +8,7 @@ from typing import Sequence
 from open_deep_research.diligence_research_adapter import (
     build_evidence_package_from_research_output,
     build_evidence_package_from_research_record,
+    fetch_public_source,
 )
 
 
@@ -41,6 +42,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.research_record.read_text(encoding="utf-8"),
             mappings_json,
             args.accessed_at,
+            source_verifier=fetch_public_source,
         )
     else:
         package = build_evidence_package_from_research_output(
@@ -48,6 +50,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.research_output.read_text(encoding="utf-8"),
             mappings_json,
             args.accessed_at,
+            source_verifier=fetch_public_source,
         )
     if args.output:
         args.output.write_text(f"{package}\n", encoding="utf-8")

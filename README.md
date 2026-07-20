@@ -16,16 +16,16 @@ Run the focused test:
 uv run pytest tests/test_diligence_evidence.py -q
 ```
 
-Run the reproducible local suite:
+Run the local evidence suite:
+
+```bash
+uv run pytest tests/test_diligence_evidence.py tests/test_diligence_research_adapter.py tests/test_diligence_runner.py -q
+```
+
+The upstream full suite includes a legacy LangSmith integration test and needs configured remote model, search, and LangSmith access:
 
 ```bash
 uv run pytest -q
-```
-
-The legacy LangSmith evaluation needs configured remote model, search, and LangSmith access, so it is opt-in:
-
-```bash
-uv run pytest --run-langsmith src/legacy/tests/test_report_quality.py
 ```
 
 See the synthetic input examples in [`examples/due_diligence_request.json`](examples/due_diligence_request.json) and [`examples/due_diligence_candidates.json`](examples/due_diligence_candidates.json).
@@ -51,12 +51,18 @@ The record needs a `sources` array. Every entry has `title`, the exact
 credential-free HTTP(S) `source_url`, and a page-grounded `research_excerpt`.
 The optional `agent` object is descriptive only; this fork does not trust an
 agent's own evidence grades or conclusions. The runner supplies the access date
-and uses the same URL and excerpt checks for every provider.
+and uses the same URL and excerpt checks for every provider. For every mapped
+claim, the runner fetches the public URL itself, requires the direct quote to
+occur in that response, and records the actual fetch timestamp plus its SHA-256
+hash. A failed fetch or missing quote is rejected rather than marked usable.
+High-priority `fact` values must also be the verified direct quote, not a
+paraphrase.
 
 This is the default path for using Codex without embedding its current desktop
 session or any credentials into the repository. It also means the fork can
 accept a future API, local, or MCP-backed agent without changing the evidence
-gate.
+gate. The included `*.example` URLs are synthetic format fixtures, so their
+high-priority mapping is expected to remain `needs_verification` when run.
 
 ### Convert built-in research-tool output
 
@@ -71,7 +77,7 @@ uv run python -m open_deep_research.diligence_runner \
   --output /tmp/due_diligence_package.json
 ```
 
-Research summaries are source observations, not facts. A mapping still needs a claim, factual excerpt, publication date, source type, evidence level, independence flag, and limitations before the existing evidence gate can mark it usable.
+Research summaries are source observations, not facts. A mapping still needs a claim, factual excerpt, publication date, source type, evidence level, independence flag, and limitations before the existing evidence gate can mark it usable. High-priority mappings must use the verified direct quote itself as `fact`; an explanatory paraphrase belongs in a separate note, not in evidence.
 
 <img width="817" height="666" alt="Screenshot 2025-07-13 at 11 21 12 PM" src="https://github.com/user-attachments/assets/052f2ed3-c664-4a4f-8ec2-074349dcaa3f" />
 

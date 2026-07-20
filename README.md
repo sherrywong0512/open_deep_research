@@ -18,7 +18,7 @@ an agent supplied a URL and a page currently contains a matching quote. A source
 candidate needs the claim link, factual statement, key excerpt, source URL,
 publication and access dates, proposed source assessment, and limitations.
 
-`coverage.status` has two safe outcomes:
+For runner output, `coverage.status` has two safe outcomes:
 
 - `needs_verification`: no independently re-fetched quote survived the gate.
 - `needs_human_review`: a direct quote survived the technical gate, but a person
@@ -27,6 +27,10 @@ publication and access dates, proposed source assessment, and limitations.
 
 This is the key design decision in the fork: the code verifies retrieval and
 quotation; a human retains responsibility for evidence interpretation.
+
+The lower-level `build_candidate_package` API only validates the shape of
+unverified input and returns `candidate_evidence`; it never emits verified
+candidates or `needs_human_review`.
 
 Run the focused test:
 
@@ -84,6 +88,21 @@ accept a future API, local, or MCP-backed agent without changing the evidence
 gate. The included `*.example` URLs are synthetic format fixtures, so their
 high-priority mapping is expected to remain `needs_verification` when run.
 
+### Reproducible public-source smoke test
+
+The repository also includes a small, real public-source fixture rather than
+only a synthetic URL. It checks a dated announcement in the upstream README;
+the result should be a verified quote candidate awaiting human review, not a
+claim conclusion.
+
+```bash
+uv run python -m open_deep_research.diligence_runner \
+  --request examples/upstream_readme_request.json \
+  --research-record examples/upstream_readme_record.json \
+  --mappings examples/upstream_readme_mappings.json \
+  --accessed-at 2026-07-20
+```
+
 ### Convert built-in research-tool output
 
 The current research tool emits `SOURCE / URL / SUMMARY` text. Convert it only with a mapping whose credential-free HTTP(S) `source_url` exactly appears in that text and whose `key_excerpt` occurs in an observation of that same URL; the runner supplies the access date and rejects unmapped sources, excerpts, and unsafe URLs.
@@ -104,7 +123,7 @@ Research summaries are source observations, not facts. A mapping still needs a c
 The runner resolves and pins a public IP before connecting, rejects private or
 credential-bearing URLs, refuses redirects, limits response size, records the
 raw-response SHA-256 and fetch time, and matches the quote against static text or
-gzip-compressed HTML visible text. It intentionally does not execute JavaScript,
+gzip-compressed HTML DOM text (excluding `script` and `style`). It intentionally does not execute JavaScript,
 read PDFs, bypass access controls, infer source authority, or infer that a quote
 semantically proves a broader business claim. Those boundaries are testable and
 are preferable to an impressive-looking but overconfident research report.

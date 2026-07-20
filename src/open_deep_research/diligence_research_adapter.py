@@ -10,13 +10,14 @@ from datetime import date, datetime, timezone
 from hashlib import sha256
 from html.parser import HTMLParser
 from http.client import HTTPResponse
+from io import BytesIO
 from ipaddress import ip_address
 from typing import Any, Callable, Literal
 from urllib.parse import urlsplit
 
 from open_deep_research.diligence_evidence import (
     DiligenceRequest,
-    build_evidence_package,
+    build_candidate_package,
     validate_source_url,
 )
 
@@ -196,15 +197,48 @@ def _build_evidence_package_from_sources(
         candidates.append(candidate)
 
     package = json.loads(
-        build_evidence_package(
+        build_candidate_package(
             request_json,
             json.dumps(candidates, ensure_ascii=False),
         )
     )
+    _mark_verified_candidates_for_human_review(package, candidates)
     package["rejected_evidence"].extend(rejected_mappings)
     package["research_sources"] = research_sources
     package["source_verifications"] = source_verifications
     return json.dumps(package, ensure_ascii=False)
+
+
+def _mark_verified_candidates_for_human_review(
+    package: dict[str, Any], verified_candidates: list[dict[str, Any]]
+) -> None:
+    """Promote only independently re-fetched candidates to an explicit review queue."""
+    verified_claim_ids = {candidate["claim_id"] for candidate in verified_candidates}
+    human_review_items: list[dict[str, str]] = []
+    open_verification_items: list[dict[str, str]] = []
+    for item in package["coverage"]:
+        if item["claim_id"] in verified_claim_ids:
+            item["status"] = "needs_human_review"
+            human_review_items.append(
+                {
+                    "claim_id": item["claim_id"],
+                    "statement": item["statement"],
+                    "reason": "confirm_quote_supports_claim_and_source_assessment",
+                }
+            )
+        else:
+            open_verification_items.append(
+                {
+                    "claim_id": item["claim_id"],
+                    "statement": item["statement"],
+                    "reason": "missing_independent_A_or_B_evidence"
+                    if item["priority"] == "high"
+                    else "missing_usable_evidence",
+                }
+            )
+    package["verified_candidates"] = package.pop("candidate_evidence")
+    package["open_verification_items"] = open_verification_items
+    package["human_review_items"] = human_review_items
 
 
 def fetch_public_source(source_url: str, key_excerpt: str) -> SourceVerification:
@@ -309,7 +343,8 @@ def _extract_public_text(
     if encoding in {"", "identity"}:
         decoded = content
     elif encoding == "gzip":
-        decoded = gzip.decompress(content)
+        with gzip.GzipFile(fileobj=BytesIO(content)) as compressed_source:
+            decoded = compressed_source.read(_MAX_SOURCE_BYTES + 1)
     else:
         raise ValueError("unsupported content encoding")
     if len(decoded) > _MAX_SOURCE_BYTES:

@@ -2,7 +2,7 @@
 
 import json
 
-from open_deep_research.diligence_evidence import build_evidence_package
+from open_deep_research.diligence_evidence import build_candidate_package
 
 
 def test_builds_usable_evidence_for_a_complete_candidate() -> None:
@@ -36,14 +36,11 @@ def test_builds_usable_evidence_for_a_complete_candidate() -> None:
         ]
     )
 
-    package = json.loads(build_evidence_package(request_json, candidates_json))
+    package = json.loads(build_candidate_package(request_json, candidates_json))
 
-    assert package["usable_evidence"][0]["claim_id"] == "claim-1"
+    assert package["candidate_evidence"][0]["claim_id"] == "claim-1"
     assert package["rejected_evidence"] == []
-    assert package["coverage"][0]["status"] == "needs_human_review"
-    assert package["human_review_items"][0]["reason"] == (
-        "confirm_quote_supports_claim_and_source_assessment"
-    )
+    assert package["coverage"][0]["status"] == "needs_verification"
 
 
 def test_rejects_candidate_without_a_source_and_marks_claim_for_verification() -> None:
@@ -76,9 +73,9 @@ def test_rejects_candidate_without_a_source_and_marks_claim_for_verification() -
         ]
     )
 
-    package = json.loads(build_evidence_package(request_json, candidates_json))
+    package = json.loads(build_candidate_package(request_json, candidates_json))
 
-    assert package["usable_evidence"] == []
+    assert package["candidate_evidence"] == []
     assert package["rejected_evidence"][0]["claim_id"] == "claim-1"
     assert "source_url" in package["rejected_evidence"][0]["missing_fields"]
     assert package["coverage"][0]["status"] == "needs_verification"
@@ -109,9 +106,9 @@ def test_rejects_candidate_with_an_empty_source_url() -> None:
         ]
     )
 
-    package = json.loads(build_evidence_package(request_json, candidates_json))
+    package = json.loads(build_candidate_package(request_json, candidates_json))
 
-    assert package["usable_evidence"] == []
+    assert package["candidate_evidence"] == []
     assert package["rejected_evidence"][0]["missing_fields"] == ["source_url"]
     assert package["coverage"][0]["status"] == "needs_verification"
 
@@ -147,9 +144,9 @@ def test_rejects_candidate_with_a_whitespace_only_source_url() -> None:
         ]
     )
 
-    package = json.loads(build_evidence_package(request_json, candidates_json))
+    package = json.loads(build_candidate_package(request_json, candidates_json))
 
-    assert package["usable_evidence"] == []
+    assert package["candidate_evidence"] == []
     assert package["rejected_evidence"][0]["missing_fields"] == ["source_url"]
     assert package["coverage"][0]["status"] == "needs_verification"
 
@@ -185,9 +182,9 @@ def test_rejects_candidate_with_an_invalid_source_url_or_date() -> None:
         ]
     )
 
-    package = json.loads(build_evidence_package(request_json, candidates_json))
+    package = json.loads(build_candidate_package(request_json, candidates_json))
 
-    assert package["usable_evidence"] == []
+    assert package["candidate_evidence"] == []
     assert package["rejected_evidence"][0]["reason"] == "invalid_candidate"
     assert package["coverage"][0]["status"] == "needs_verification"
 
@@ -217,9 +214,9 @@ def test_rejects_candidate_with_a_datetime_instead_of_an_iso_date() -> None:
         ]
     )
 
-    package = json.loads(build_evidence_package(request_json, candidates_json))
+    package = json.loads(build_candidate_package(request_json, candidates_json))
 
-    assert package["usable_evidence"] == []
+    assert package["candidate_evidence"] == []
     assert package["rejected_evidence"][0]["reason"] == "invalid_candidate"
     assert package["coverage"][0]["status"] == "needs_verification"
 
@@ -273,8 +270,8 @@ def test_rejects_source_urls_without_a_host_with_credentials_or_invalid_ports() 
         ]
     )
 
-    package = json.loads(build_evidence_package(request_json, candidates_json))
+    package = json.loads(build_candidate_package(request_json, candidates_json))
 
-    assert package["usable_evidence"] == []
+    assert package["candidate_evidence"] == []
     assert len(package["rejected_evidence"]) == 3
     assert package["coverage"][0]["status"] == "needs_verification"

@@ -1,0 +1,10 @@
+{
+  "agent": {"name": "Codex", "mode": "interactive"},
+  "sources": [
+    {
+      "title": "Open Deep Research README",
+      "source_url": "https://raw.githubusercontent.com/langchain-ai/open_deep_research/main/README.md",
+      "research_excerpt": "**August 14, 2025**: See our free course"
+    }
+  ]
+}

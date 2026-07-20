@@ -75,7 +75,7 @@ def test_builds_evidence_only_when_mapping_points_to_observed_source() -> None:
         )
     )
 
-    assert package["usable_evidence"][0]["accessed_at"] == "2026-07-17"
+    assert package["verified_candidates"][0]["accessed_at"] == "2026-07-17"
     assert package["coverage"][0]["status"] == "needs_human_review"
     assert package["research_sources"][0]["source_url"] == (
         "https://regulator.example/licenses/ABC-123"
@@ -105,7 +105,7 @@ def test_rejects_mapping_that_does_not_exactly_match_an_observed_source() -> Non
         )
     )
 
-    assert package["usable_evidence"] == []
+    assert package["verified_candidates"] == []
     assert package["rejected_evidence"][0]["reason"] == "source_not_observed"
     assert package["coverage"][0]["status"] == "needs_verification"
 
@@ -133,7 +133,7 @@ def test_rejects_mapping_with_an_excerpt_missing_from_the_observed_source() -> N
         )
     )
 
-    assert package["usable_evidence"] == []
+    assert package["verified_candidates"] == []
     assert package["rejected_evidence"][0]["reason"] == "excerpt_not_observed"
     assert package["coverage"][0]["status"] == "needs_verification"
 
@@ -173,7 +173,7 @@ Registry entry says root-source excerpt.
         )
     )
 
-    assert package["usable_evidence"][0]["source_url"] == "https://regulator.example"
+    assert package["verified_candidates"][0]["source_url"] == "https://regulator.example"
     assert package["research_sources"][0]["source_url"] == "https://regulator.example"
 
 
@@ -388,7 +388,7 @@ def test_verified_quote_is_a_candidate_not_an_automatic_claim_conclusion() -> No
             "reason": "confirm_quote_supports_claim_and_source_assessment",
         }
     ]
-    assert package["usable_evidence"][0]["source_assessment"] == {
+    assert package["verified_candidates"][0]["source_assessment"] == {
         "proposed_evidence_level": "A",
         "proposed_is_independent": True,
         "proposed_source_type": "regulatory_record",
@@ -512,6 +512,23 @@ def test_public_source_fetcher_extracts_text_from_compressed_html(
     assert verification.status == "verified"
 
 
+def test_public_source_fetcher_rejects_oversized_gzip_expansion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "open_deep_research.diligence_research_adapter._public_network_target",
+        lambda _url: ("example.test", 443, "93.184.216.34"),
+    )
+    monkeypatch.setattr(
+        "open_deep_research.diligence_research_adapter._fetch_pinned_public_content",
+        lambda *_args: (gzip.compress(b"x" * 2_000_001), "gzip", "text/html"),
+    )
+
+    verification = fetch_public_source("https://example.test/source", "x")
+
+    assert verification.status == "fetch_failed"
+
+
 def test_unverified_normal_priority_agent_evidence_is_not_usable() -> None:
     request_json = json.dumps(
         {
@@ -553,6 +570,6 @@ def test_unverified_normal_priority_agent_evidence_is_not_usable() -> None:
         )
     )
 
-    assert package["usable_evidence"] == []
+    assert package["verified_candidates"] == []
     assert package["coverage"][0]["status"] == "needs_verification"
     assert package["rejected_evidence"][0]["reason"] == "source_not_verified"

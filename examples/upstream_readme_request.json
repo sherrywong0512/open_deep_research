@@ -1,0 +1,11 @@
+{
+  "subject": "Open Deep Research upstream README",
+  "purpose": "验证公开网页证据候选工作流",
+  "claims": [
+    {
+      "id": "free-course-announcement",
+      "statement": "README 发布过免费课程公告。",
+      "priority": "high"
+    }
+  ]
+}

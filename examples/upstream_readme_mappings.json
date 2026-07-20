@@ -1,0 +1,13 @@
+[
+  {
+    "claim_id": "free-course-announcement",
+    "fact": "**August 14, 2025**: See our free course",
+    "key_excerpt": "**August 14, 2025**: See our free course",
+    "source_url": "https://raw.githubusercontent.com/langchain-ai/open_deep_research/main/README.md",
+    "published_at": "2025-08-14",
+    "source_type": "project_repository",
+    "evidence_level": "C",
+    "is_independent": false,
+    "limitations": "该来源仅证明项目方在 README 中发布过该公告。"
+  }
+]

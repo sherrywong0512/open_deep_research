@@ -68,8 +68,8 @@ _REQUIRED_CANDIDATE_FIELDS = (
 )
 
 
-def build_evidence_package(request_json: str, candidates_json: str) -> str:
-    """Validate candidate evidence and return a JSON diligence evidence package."""
+def build_candidate_package(request_json: str, candidates_json: str) -> str:
+    """Validate unverified candidate metadata without asserting source retrieval."""
     request = DiligenceRequest.model_validate_json(request_json)
     raw_candidates = json.loads(candidates_json)
     if not isinstance(raw_candidates, list):
@@ -118,7 +118,7 @@ def build_evidence_package(request_json: str, candidates_json: str) -> str:
 
         usable_evidence.append(candidate.model_dump(mode="json"))
 
-    coverage = _coverage_for(request, usable_evidence)
+    coverage = _coverage_for(request)
     open_verification_items = [
         {
             "claim_id": item["claim_id"],
@@ -130,27 +130,16 @@ def build_evidence_package(request_json: str, candidates_json: str) -> str:
         for item in coverage
         if item["status"] == "needs_verification"
     ]
-    human_review_items = [
-        {
-            "claim_id": item["claim_id"],
-            "statement": item["statement"],
-            "reason": "confirm_quote_supports_claim_and_source_assessment",
-        }
-        for item in coverage
-        if item["status"] == "needs_human_review"
-    ]
-
     output_evidence = [_as_evidence_candidate(item) for item in usable_evidence]
 
     return json.dumps(
         {
             "subject": request.subject,
             "purpose": request.purpose,
-            "usable_evidence": output_evidence,
+            "candidate_evidence": output_evidence,
             "rejected_evidence": rejected_evidence,
             "coverage": coverage,
             "open_verification_items": open_verification_items,
-            "human_review_items": human_review_items,
         },
         ensure_ascii=False,
     )
@@ -186,26 +175,19 @@ def validate_source_url(value: Any) -> str:
     return value
 
 
-def _coverage_for(
-    request: DiligenceRequest, usable_evidence: list[dict[str, Any]]
-) -> list[dict[str, str]]:
+def _coverage_for(request: DiligenceRequest) -> list[dict[str, str]]:
     """Report whether every requested claim has sufficient usable evidence."""
     coverage: list[dict[str, str]] = []
     for claim in request.claims:
-        claim_evidence = [
-            item for item in usable_evidence if item["claim_id"] == claim.id
-        ]
         coverage.append(
             {
                 "claim_id": claim.id,
                 "statement": claim.statement,
                 "priority": claim.priority,
-                # A fetched quote establishes only that the page contains the quote.
-                # Whether it supports the claim and whether the source deserves its
-                # proposed grade are diligence judgments, not agent decisions.
-                "status": (
-                    "needs_human_review" if claim_evidence else "needs_verification"
-                ),
+                # Metadata alone does not establish that the source was fetched or
+                # that the quote supports the claim. The adapter promotes only
+                # independently re-fetched candidates to human review.
+                "status": "needs_verification",
             }
         )
     return coverage

@@ -91,9 +91,11 @@ high-priority mapping is expected to remain `needs_verification` when run.
 ### Reproducible public-source smoke test
 
 The repository also includes a small, real public-source fixture rather than
-only a synthetic URL. It checks a dated announcement in the upstream README;
-the result should be a verified quote candidate awaiting human review, not a
-claim conclusion.
+only a synthetic URL. It pins the upstream README to commit
+`9fe9713feeb39029e0955d410bcebcb8b0285944`, checks a dated announcement, and
+should return a verified quote candidate awaiting human review—not a claim
+conclusion. `--accessed-at` records the date of the agent observation in this
+fixture; use the date of a newly created record when researching a new source.
 
 ```bash
 uv run python -m open_deep_research.diligence_runner \

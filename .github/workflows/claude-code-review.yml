@@ -12,6 +12,10 @@ on:
 
 jobs:
   claude-review:
+    # This upstream workflow needs the Claude GitHub App or an API secret.
+    # Keep it opt-in in this portfolio fork so an unconfigured integration does
+    # not report a false-negative check on otherwise valid pull requests.
+    if: ${{ vars.ENABLE_CLAUDE_REVIEW == 'true' }}
     # Optional: Filter by PR author
     # if: |
     #   github.event.pull_request.user.login == 'external-contributor' ||
@@ -75,4 +79,3 @@ jobs:
           # if: |
           #   !contains(github.event.pull_request.title, '[skip-review]') &&
           #   !contains(github.event.pull_request.title, '[WIP]')
-
